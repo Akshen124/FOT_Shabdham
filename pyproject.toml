@@ -1,0 +1,30 @@
+[project]
+name = "fot-ai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "dotenv>=0.9.9",
+    "fastapi>=0.115.0",
+    "fastembed>=0.8.1",
+    "groq>=1.7.0",
+    "google-genai>=1.0.0",
+    "imageio-ffmpeg>=0.6.0",
+    "nemo-toolkit[asr]>=3.0.0",
+    "pypdf>=6.19.0",
+    "python-multipart>=0.0.20",
+    "qdrant-client>=1.19.1",
+    "redis>=8.1.0",
+    "streamlit>=1.57.0",
+    "torch==2.14.1",
+    "uvicorn>=0.35.0",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
