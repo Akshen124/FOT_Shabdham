@@ -194,6 +194,7 @@ def _format_safe_chat_traceback(error: Exception, *private_values: str) -> str:
         if value:
             formatted_traceback = formatted_traceback.replace(value, "[REDACTED]")
     return formatted_traceback
+    
 
 
 def _require_backend_config() -> tuple[str, str, str, int]:
@@ -206,6 +207,7 @@ def _require_backend_config() -> tuple[str, str, str, int]:
         raise ValueError("QDRANT_API_KEY is not configured.")
     if not qdrant_url:
         raise ValueError("QDRANT_URL is not configured.")
+
 
     try:
         top_k = int(os.getenv("TOP_K", "5"))
@@ -300,6 +302,7 @@ def _coerce_text(value: Any) -> str:
     if isinstance(value, str):
         return value.strip()
     return str(value).strip()
+ 
 
 
 async def _read_stt_audio(
