@@ -12,6 +12,7 @@ export async function sendChatMessage(
   message: string,
   sessionId: string,
   apiBase: string,
+  abortSignal?: AbortSignal,
 ): Promise<ChatResponse> {
   const chatUrl = `${apiBase.replace(/\/+$/, '')}/api/chat`
 
@@ -29,6 +30,7 @@ export async function sendChatMessage(
       message,
       session_id: sessionId,
     }),
+    signal: abortSignal,
   })
 
   if (!chatResponse.ok) {
@@ -129,10 +131,10 @@ function stopCurrentAudio(): void {
   resolvePlayback?.()
 }
 
-export async function playResponseAudio(
-  text: string,
-  apiBase: string,
-): Promise<void> {
+export function stopAudioPlayback(): void {
+  stopCurrentAudio()
+}
+export async function playResponseAudio(text: string, apiBase: string): Promise<void> {
   const answer = text.trim()
   const ttsUrl = `${apiBase.replace(/\/+$/, '')}/api/tts`
 
@@ -298,5 +300,5 @@ export async function playResponseAudio(
     }
   }
 
-  await playbackEnded
+  await playbackEnded;
 }

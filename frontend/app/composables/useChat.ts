@@ -1,5 +1,6 @@
 import { ref } from 'vue'
-import { playResponseAudio, sendChatMessage } from '~/services/chatService'
+import { playResponseAudio, sendChatMessage, stopAudioPlayback } from '~/services/chatService'
+
 
 export interface ChatMessage {
   id: string
@@ -10,6 +11,8 @@ export interface ChatMessage {
 export function useChat() {
   const messages = ref<ChatMessage[]>([])
   const isThinking = ref(false)
+  // Holds AbortController for cancelling in‑flight request
+  const abortController = ref<AbortController | null>(null)
   const isSpeaking = ref(false)
   const error = ref<string | null>(null)
   const ttsWarning = ref<string | null>(null)
@@ -46,7 +49,7 @@ export function useChat() {
     isThinking.value = true
 
     try {
-      const { response } = await sendChatMessage(normalized, sessionId.value, apiBase)
+      const { response } = await sendChatMessage(normalized, sessionId.value, apiBase, abortController.value?.signal)
       const cleanedResponse = response.trim()
 
       if (cleanedResponse) {
@@ -67,15 +70,38 @@ export function useChat() {
 
       return true
     } catch (caughtError) {
-      const messageText = caughtError instanceof Error ? caughtError.message : 'Something went wrong while generating the response.'
-      error.value = messageText
+      // Distinguish aborts from real errors
+      if (caughtError instanceof DOMException && caughtError.name === 'AbortError') {
+        console.info('[Chat] Request aborted')
+        // No error UI for intentional cancellation
+      } else {
+        const messageText = caughtError instanceof Error ? caughtError.message : 'Something went wrong while generating the response.'
+        error.value = messageText
+      }
       return false
     } finally {
       isThinking.value = false
+      abortController.value = null
     }
   }
 
-  return {
+  function stopProcessing() {
+    // Abort the network request if present
+    if (abortController.value) {
+      abortController.value.abort()
+    }
+    // Stop any ongoing TTS playback
+    stopAudioPlayback()
+    // Emit global event to stop typewriter animation
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('stop-typing'))
+    }
+    // Reset UI flags
+    isThinking.value = false
+    isSpeaking.value = false
+  }
+
+return {
     messages,
     isThinking,
     isSpeaking,
@@ -83,5 +109,6 @@ export function useChat() {
     ttsWarning,
     transcript,
     sendMessage,
+    stopProcessing,
   }
 }

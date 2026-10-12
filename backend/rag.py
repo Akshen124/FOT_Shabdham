@@ -1,5 +1,6 @@
 import os
 import re
+
 import time
 from pathlib import Path
 from typing import Callable, TypeVar, TypedDict
@@ -101,6 +102,38 @@ def build_context(results: list[RetrievedDocument]) -> str:
     )
 
 
+def normalize_response(text: str) -> str:
+    """Convert markdown/HTML/emoji formatting to plain conversational text.
+    Simple heuristics: remove tables, strip markdown bold/italic, HTML tags,
+    remove numbered emoji lists, and collapse whitespace.
+    """
+    # Remove markdown tables (lines containing pipes and optional dashes)
+    lines = []
+    for line in text.splitlines():
+        if re.match(r"^\s*\|.*\|\s*$", line):
+            continue
+        if re.match(r"^\s*\|[-:|\s]*\|\s*$", line):
+            continue
+        lines.append(line)
+    text = "\n".join(lines)
+    # Remove markdown bold **text** or __text__
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"__(.*?)__", r"\1", text)
+    # Remove markdown italics *text* or _text_
+    text = re.sub(r"\*(.*?)\*", r"\1", text)
+    text = re.sub(r"_(.*?)_", r"\1", text)
+    # Remove HTML tags
+    text = re.sub(r"<[^>]+>", " ", text)
+    # Remove numbered emoji like 1️⃣, 2️⃣ etc.
+    text = re.sub(r"\d+️⃣", "", text)
+    # Remove stray markdown list markers (e.g., '-', '*') at line start if they are not part of sentence
+    text = re.sub(r"^[-*]\s+", "", text, flags=re.MULTILINE)
+    # Collapse multiple spaces and newlines
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{2,}", "\n", text)
+    return text.strip()
+
+
 def generate_answer(
     client,
     model: str,
@@ -151,6 +184,8 @@ def generate_answer(
         if answer
         else "I couldn't generate an answer from the available context."
     )
+    # Normalize any markdown/HTML that may have slipped through
+    final_answer = normalize_response(final_answer)
     rag_debug_log(f"Final answer: {final_answer}")
     return final_answer
 

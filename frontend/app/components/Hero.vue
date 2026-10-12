@@ -62,9 +62,13 @@
             :disabled="isThinking"
             aria-label="Type your message"
           />
-          <button class="hero__send" type="submit" :disabled="isThinking || !input.trim()" aria-label="Send message">
-            Send
+          <button v-if="!isThinking" class="hero__send" type="submit" :disabled="!input.trim()" aria-label="Send message">Send</button>
+          <button v-if="isThinking" class="hero__stop" type="button" @click="stopProcessing" aria-label="Stop generation">
+            <!-- Simple stop square icon -->
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" fill="currentColor"/></svg>
+            Stop
           </button>
+
         </form>
 
         <div class="hero__voice-area">
@@ -114,7 +118,7 @@ const modelLoaded = ref(false)
 const isStarted = ref(false)
 const contentVisible = ref(false)
 
-const { messages, isThinking, isSpeaking, error, ttsWarning, sendMessage } = useChat()
+const { messages, isThinking, isSpeaking, error, ttsWarning, sendMessage, stopProcessing } = useChat()
 const {
   isListening,
   isSupported,
@@ -390,7 +394,27 @@ function toggleVoiceInput() {
   cursor: not-allowed;
 }
 
-.hero__voice-area {
+  .hero__stop {
+    border-radius: 999px;
+    border: 1px solid rgba(26, 26, 26, 0.12);
+    background: #c0392b; /* dark red */
+    color: #fff;
+    padding: 0.9rem 1.3rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+
+  .hero__stop:hover:not(:disabled) {
+    opacity: 0.92;
+  }
+
+  .hero__stop:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .hero__voice-area {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
