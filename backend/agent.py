@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Callable
 from zoneinfo import ZoneInfo
 
-from rag import NOT_AVAILABLE_ANSWER, build_context, generate_answer, rag_debug_log
+from .rag import NOT_AVAILABLE_ANSWER, build_context, generate_answer, rag_debug_log
 
 
 SYSTEM_PROMPT = """You are a helpful assistant. Use the knowledge-base search for questions about the user's documents. Use the calculator for arithmetic and the current-time tool for date or time questions. For time questions, use UTC unless the user gives a location or timezone. Do not expose internal retrieval details in user-facing answers."""
