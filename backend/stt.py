@@ -7,6 +7,7 @@ import time
 
 
 from deepgram import DeepgramClient
+from groq import Groq, RateLimitError, APITimeoutError, APIError
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,9 @@ class InvalidAudioError(ValueError):
 
 class STTTranscriptionError(RuntimeError):
     """Raised when transcription fails."""
+
+class _EmptyTranscriptError(STTTranscriptionError):
+    """Raised when Deepgram returns an empty transcript string."""
 
 
 def _read_positive_float(name: str, default: float) -> float:
@@ -68,10 +72,7 @@ class SpeechToTextService:
         if not audio_bytes:
             raise InvalidAudioError("No audio data was uploaded.")
 
-        if not os.getenv("DEEPGRAM_API_KEY"):
-            raise STTTranscriptionError(
-                "DEEPGRAM_API_KEY is not configured."
-            )
+
       
 
         try:
@@ -85,8 +86,41 @@ class SpeechToTextService:
             ) from error
 
         try:
+            # Try Groq transcription if API key is set
+            if os.getenv("GROQ_API_KEY"):
+                client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+                logger.info(
+                    "[STT] Provider=Groq model=%s file=%s content_type=%s bytes=%d",
+                    "whisper-large-v3",
+                    filename,
+                    content_type,
+                    len(audio_bytes),
+                )
+                start_time = time.perf_counter()
+                try:
+                    transcript = client.audio.transcriptions.create(
+                        model="whisper-large-v3",
+                        file=(filename, audio_bytes, content_type),
+                        response_format="text",
+                    )
+                except RateLimitError as error:
+                    raise STTTranscriptionError("rate limit exceeded") from error
+                except APITimeoutError as error:
+                    raise STTTranscriptionError("request timed out") from error
+                except APIError as error:
+                    raise InvalidAudioError(str(error)) from error
+
+                transcript = transcript.strip()
+                if not transcript:
+                    raise _EmptyTranscriptError("Groq returned an empty transcript.")
+                duration = time.perf_counter() - start_time
+                logger.info("[STT] Transcription succeeded in %.3fs using Groq", duration)
+                return transcript, "groq_whisper"
+            # Fallback to Deepgram – ensure API key is set
+            if not os.getenv("DEEPGRAM_API_KEY"):
+                raise STTTranscriptionError("DEEPGRAM_API_KEY is not configured.")
             client = DeepgramClient(
-                api_key=os.environ["DEEPGRAM_API_KEY"]
+                api_key=os.getenv("DEEPGRAM_API_KEY")
             )
 
             logger.info(
@@ -112,13 +146,11 @@ class SpeechToTextService:
                     ),
                     timeout=self.timeout_seconds,
                 )
-
             except TimeoutError as error:
                 logger.error("[STT] Deepgram request timed out.")
                 raise STTTranscriptionError(
                     "Deepgram transcription timed out."
                 ) from error
-
             except Exception as error:
                 logger.exception("[STT] Deepgram request failed.")
                 raise STTTranscriptionError(
@@ -130,21 +162,20 @@ class SpeechToTextService:
                 .alternatives[0].transcript
                 .strip()
             )
-
             if not transcript:
-                raise STTTranscriptionError(
-                    "Deepgram returned an empty transcript."
-                )
-
+                raise _EmptyTranscriptError("Deepgram returned an empty transcript.")
             duration = time.perf_counter() - start_time
-
             logger.info(
                 "[STT] Transcription succeeded in %.3fs using %s.",
                 duration,
                 DEEPGRAM_MODEL,
             )
-
             return transcript, STT_PROVIDER
-
+        except RateLimitError as error:
+            raise STTTranscriptionError("rate limit exceeded") from error
+        except APITimeoutError as error:
+            raise STTTranscriptionError("request timed out") from error
+        except APIError as error:
+            raise InvalidAudioError(str(error)) from error
         finally:
             self._slots.release()
