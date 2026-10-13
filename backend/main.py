@@ -244,7 +244,7 @@ def get_backend() -> tuple[Groq, str, KnowledgeBase, int]:
         raise RuntimeError(
             "Could not initialize the Qdrant knowledge base. Check QDRANT_URL and QDRANT_API_KEY."
         ) from error
-    return client, os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"), knowledge_base, top_k
+    return client, os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"), knowledge_base, top_k
 
 
 @asynccontextmanager
