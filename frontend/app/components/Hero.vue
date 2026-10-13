@@ -397,7 +397,7 @@ function toggleVoiceInput() {
   .hero__stop {
     border-radius: 999px;
     border: 1px solid rgba(26, 26, 26, 0.12);
-    background: #c0392b; /* dark red */
+    background: #201c1cff; /* dark red */
     color: #fff;
     padding: 0.9rem 1.3rem;
     font-size: 0.8rem;

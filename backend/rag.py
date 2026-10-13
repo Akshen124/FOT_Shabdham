@@ -146,13 +146,15 @@ def generate_answer(
         rag_debug_log(f"Final answer: {NOT_AVAILABLE_ANSWER}")
         return NOT_AVAILABLE_ANSWER
 
+    # Founder-specific check removed to allow LLM to answer using any relevant context.
+    # If the query matches a founder question, we still log for debugging but do not early-return.
     if _FOUNDER_QUESTION.search(query) and not _FOUNDER_EVIDENCE.search(context):
         rag_debug_log(
-            "Founder identity was requested, but the retrieved context does not "
-            "explicitly identify a GenLab founder."
+            "Founder identity was requested, but the retrieved context does not explicitly identify a GenLab founder."
         )
-        rag_debug_log(f"Final answer: {NOT_AVAILABLE_ANSWER}")
-        return NOT_AVAILABLE_ANSWER
+        # Continue without returning NOT_AVAILABLE_ANSWER, allowing the LLM to attempt an answer.
+        # Note: The LLM may still respond with NOT_AVAILABLE_ANSWER if it determines insufficient evidence.
+        pass
 
     rag_debug_log(f"Final question passed to answer model: {query}")
     rag_debug_log(
@@ -186,6 +188,12 @@ def generate_answer(
     )
     # Normalize any markdown/HTML that may have slipped through
     final_answer = normalize_response(final_answer)
+    # After generation, enforce founder fallback if evidence missing
+    if _FOUNDER_QUESTION.search(query) and not _FOUNDER_EVIDENCE.search(context):
+        rag_debug_log(
+            "Founder question answered without sufficient evidence; overriding with not-available answer."
+        )
+        final_answer = NOT_AVAILABLE_ANSWER
     rag_debug_log(f"Final answer: {final_answer}")
     return final_answer
 

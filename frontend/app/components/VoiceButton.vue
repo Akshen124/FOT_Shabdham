@@ -47,7 +47,7 @@ const icon = computed(() => {
   if (props.listening) return '🔴'
   if (props.processing) return '⏳'
   if (props.speaking) return '🔊'
-  return '🎤'
+  return ''
 })
 
 const label = computed(() => {

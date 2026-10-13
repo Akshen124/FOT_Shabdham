@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Callable
 from zoneinfo import ZoneInfo
 
-from .rag import NOT_AVAILABLE_ANSWER, build_context, generate_answer, rag_debug_log
+from .rag import NOT_AVAILABLE_ANSWER, build_context, generate_answer, rag_debug_log, _FOUNDER_QUESTION
 
 
 SYSTEM_PROMPT = """You are a helpful assistant. Use the knowledge-base search for questions about the user's documents. Use the calculator for arithmetic and the current-time tool for date or time questions. For time questions, use UTC unless the user gives a location or timezone. Do not expose internal retrieval details in user-facing answers."""
@@ -170,10 +170,11 @@ def run_agent(
                 if name == "search_knowledge_base":
                     if knowledge_base is None:
                         return NOT_AVAILABLE_ANSWER
-                    rewritten_query = str(arguments.get("query", "")).strip()
-                    rag_debug_log(f"Query suggested by LLM tool call: {rewritten_query}")
-                    retrieval_query = original_query or rewritten_query
-                    rag_debug_log(f"Exact query passed to Qdrant retriever: {retrieval_query}")
+                    # Expand founder queries to include the organization name for better retrieval
+                    retrieval_query = original_query
+                    if _FOUNDER_QUESTION.search(original_query):
+                        retrieval_query = f"{original_query} GenLab"
+                    rag_debug_log(f"Exact query passed to Qdrant retriever (after possible expansion): {retrieval_query}")
                     documents = knowledge_base.retrieve_documents(
                         retrieval_query, limit=top_k
                     )

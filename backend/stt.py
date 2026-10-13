@@ -101,6 +101,7 @@ class SpeechToTextService:
                     transcript = client.audio.transcriptions.create(
                         model="whisper-large-v3",
                         file=(filename, audio_bytes, content_type),
+                        language="en",
                         response_format="text",
                     )
                 except RateLimitError as error:
