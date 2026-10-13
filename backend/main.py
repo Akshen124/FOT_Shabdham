@@ -229,9 +229,18 @@ def _require_backend_config() -> tuple[str, str, str, int]:
     return api_key, qdrant_url, qdrant_api_key, top_k
 
 
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
+
+
+def _get_groq_model() -> str:
+    configured = os.getenv("GROQ_MODEL", "").strip()
+    return configured if configured else DEFAULT_GROQ_MODEL
+
+
 @lru_cache(maxsize=1)
 def get_backend() -> tuple[Groq, str, KnowledgeBase, int]:
     api_key, qdrant_url, qdrant_api_key, top_k = _require_backend_config()
+    model = _get_groq_model()
     groq_timeout = float(os.getenv("GROQ_TIMEOUT_SECONDS", "30.0"))
     groq_retries = int(os.getenv("GROQ_MAX_RETRIES", "1"))
     client = Groq(api_key=api_key, timeout=groq_timeout, max_retries=groq_retries)
@@ -254,7 +263,8 @@ def get_backend() -> tuple[Groq, str, KnowledgeBase, int]:
         raise RuntimeError(
             "Could not initialize the Qdrant knowledge base. Check QDRANT_URL and QDRANT_API_KEY."
         ) from error
-    return client, os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"), knowledge_base, top_k
+    logger.info("[BACKEND] Active Groq LLM model configured: '%s'", model)
+    return client, model, knowledge_base, top_k
 
 
 @asynccontextmanager
@@ -269,9 +279,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Pre-warm backend and verify Qdrant connection at startup
     try:
         t0 = time.perf_counter()
-        logger.info("[STARTUP] Pre-warming backend and verifying Qdrant connection...")
+        active_model = _get_groq_model()
+        logger.info("[STARTUP] Pre-warming backend with model '%s' and verifying Qdrant connection...", active_model)
         get_backend()
-        logger.info("[STARTUP] Backend initialization finished in %.1fms", (time.perf_counter() - t0) * 1000)
+        logger.info("[STARTUP] Backend initialization finished in %.1fms (model='%s')", (time.perf_counter() - t0) * 1000, active_model)
     except Exception as exc:
         logger.warning("[STARTUP] Backend pre-warm deferred to first request: %s", exc)
 
@@ -510,10 +521,31 @@ async def chat_endpoint(request: ChatRequest) -> dict[str, str]:
         safe_tb = _format_safe_chat_traceback(error, message, session_id)
         status_code = getattr(error, "status_code", "unknown")
         error_msg = getattr(error, "message", str(error))
+        error_type = type(error).__name__
+
+        if (
+            status_code == 404
+            or "model_not_found" in str(error).lower()
+            or "notfounderror" in error_type.lower()
+        ):
+            configured_model = _get_groq_model()
+            detail = (
+                f"Configured Groq model '{configured_model}' does not exist or you do not have access to it. "
+                "Please configure a valid GROQ_MODEL in your environment."
+            )
+            logger.error(
+                "[CHAT] Groq model not found: %s (status=%s, model=%s).\nSafe traceback:\n%s",
+                error_msg,
+                status_code,
+                configured_model,
+                safe_tb,
+            )
+            raise HTTPException(status_code=502, detail=detail) from error
+
         logger.error(
             "[CHAT] Groq request failed during stage '%s' with %s (status=%s, detail=%s).\nSafe traceback:\n%s",
             stage,
-            type(error).__name__,
+            error_type,
             status_code,
             error_msg,
             safe_tb,

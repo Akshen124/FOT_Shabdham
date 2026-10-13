@@ -59,7 +59,7 @@ def initialize_assistant() -> tuple[Groq, str, KnowledgeBase, int]:
 
     client = Groq(api_key=api_key, timeout=120.0, max_retries=1)
     knowledge_base = KnowledgeBase(qdrant_url, qdrant_api_key)
-    return client, os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"), knowledge_base, top_k
+    return client, os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"), knowledge_base, top_k
 
 
 @st.cache_resource(show_spinner=False)
