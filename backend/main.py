@@ -244,7 +244,7 @@ def get_backend() -> tuple[Groq, str, KnowledgeBase, int]:
         raise RuntimeError(
             "Could not initialize the Qdrant knowledge base. Check QDRANT_URL and QDRANT_API_KEY."
         ) from error
-    return client, os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"), knowledge_base, top_k
+    return client, os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"), knowledge_base, top_k
 
 
 @asynccontextmanager
@@ -271,13 +271,17 @@ allowed_origins = [
 ]
 # Defensive guard – make sure the Vercel origin is included even if an env var overrides the default.
 vercel_origin = "https://fot-shabdham.vercel.app"
-if vercel_origin not in allowed_origins:
-    allowed_origins.append(vercel_origin)
+# Include any additional configured origins
+configured_origins = os.getenv("FRONTEND_ORIGINS", "")
+for origin in configured_origins.split(","):
+    origin = origin.strip()
+    if origin and origin not in allowed_origins:
+        allowed_origins.append(origin)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
