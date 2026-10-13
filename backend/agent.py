@@ -2,6 +2,7 @@ import ast
 import json
 import math
 import operator
+import time
 from datetime import datetime
 from typing import Callable
 from zoneinfo import ZoneInfo
@@ -145,6 +146,7 @@ def run_agent(
     ]
 
     for _ in range(MAX_TOOL_ROUNDS):
+        t_llm = time.perf_counter()
         response = client.chat.completions.create(
             model=model,
             messages=conversation,
@@ -152,6 +154,8 @@ def run_agent(
             tool_choice="auto",
             temperature=0.2,
         )
+        llm_ms = (time.perf_counter() - t_llm) * 1000
+        rag_debug_log(f"[AGENT-TIMING] Tool decision LLM call round {_ + 1}: {llm_ms:.1f}ms")
         assistant_message = response.choices[0].message
         if not assistant_message.tool_calls:
             rag_debug_log("LLM requested knowledge-base retrieval: False")

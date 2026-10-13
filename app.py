@@ -7,12 +7,25 @@ import httpx
 import streamlit as st
 from dotenv import load_dotenv
 from groq import APIConnectionError, APIStatusError, Groq, RateLimitError
-from qdrant_client.http.exceptions import ResponseHandlingException
+# pyrefly: ignore [missing-import]
+from backend.qdrant_client.http.exceptions import ResponseHandlingException
 
-from agent import run_agent
-from rag import KnowledgeBase
-from speech import ParakeetSTT
-from tts import TextToSpeechError, text_to_speech
+try:
+   
+
+    from backend.agent import run_agent
+    from backend.rag import KnowledgeBase
+    from backend.speech import ParakeetSTT
+    from backend.tts import TextToSpeechError, text_to_speech
+except ImportError:
+    # pyrefly: ignore [missing-import]
+    from agent import run_agent
+    # pyrefly: ignore [missing-import]
+    from rag import KnowledgeBase
+    # pyrefly: ignore [missing-import]
+    from speech import ParakeetSTT
+    # pyrefly: ignore [missing-import]
+    from tts import TextToSpeechError, text_to_speech
 
 
 class ChatMessage(TypedDict, total=False):
@@ -44,7 +57,7 @@ def initialize_assistant() -> tuple[Groq, str, KnowledgeBase, int]:
     if top_k < 1:
         raise ValueError("TOP_K must be a positive integer.")
 
-    client = Groq(api_key=api_key, timeout=30.0, max_retries=0)
+    client = Groq(api_key=api_key, timeout=120.0, max_retries=1)
     knowledge_base = KnowledgeBase(qdrant_url, qdrant_api_key)
     return client, os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"), knowledge_base, top_k
 

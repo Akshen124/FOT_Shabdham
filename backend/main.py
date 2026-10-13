@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import inspect
+import time
 import traceback
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -231,7 +232,9 @@ def _require_backend_config() -> tuple[str, str, str, int]:
 @lru_cache(maxsize=1)
 def get_backend() -> tuple[Groq, str, KnowledgeBase, int]:
     api_key, qdrant_url, qdrant_api_key, top_k = _require_backend_config()
-    client = Groq(api_key=api_key, timeout=30.0, max_retries=0)
+    groq_timeout = float(os.getenv("GROQ_TIMEOUT_SECONDS", "30.0"))
+    groq_retries = int(os.getenv("GROQ_MAX_RETRIES", "1"))
+    client = Groq(api_key=api_key, timeout=groq_timeout, max_retries=groq_retries)
     knowledge_base = KnowledgeBase(qdrant_url, qdrant_api_key)
     try:
         knowledge_base.index_documents()
@@ -258,11 +261,20 @@ def get_backend() -> tuple[Groq, str, KnowledgeBase, int]:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _get_redis_memory_ttl()
     logger.info(
-    "[STT] Service loaded from: %s",
-    inspect.getfile(SpeechToTextService),
-)
-
+        "[STT] Service loaded from: %s",
+        inspect.getfile(SpeechToTextService),
+    )
     app.state.stt_service = SpeechToTextService()
+
+    # Pre-warm backend and verify Qdrant connection at startup
+    try:
+        t0 = time.perf_counter()
+        logger.info("[STARTUP] Pre-warming backend and verifying Qdrant connection...")
+        get_backend()
+        logger.info("[STARTUP] Backend initialization finished in %.1fms", (time.perf_counter() - t0) * 1000)
+    except Exception as exc:
+        logger.warning("[STARTUP] Backend pre-warm deferred to first request: %s", exc)
+
     yield
 
 
@@ -442,19 +454,33 @@ async def chat_endpoint(request: ChatRequest) -> dict[str, str]:
     session_prefix = (session_id[:6] + "...") if len(session_id) > 6 else "***"
     logger.info("[CHAT] Incoming request for session [%s] (message length: %d)", session_prefix, len(message))
 
+    t_req_start = time.perf_counter()
     stage = "backend initialization"
     try:
+        t_stage = time.perf_counter()
         client, model, knowledge_base, top_k = get_backend()
+        init_ms = (time.perf_counter() - t_stage) * 1000
+        logger.info("[CHAT-TIMING] Stage 'backend initialization': %.1fms", init_ms)
+
         stage = "conversation memory lookup"
+        t_stage = time.perf_counter()
         memory_history = _load_conversation_memory(session_id)
+        mem_lookup_ms = (time.perf_counter() - t_stage) * 1000
+        logger.info("[CHAT-TIMING] Stage 'conversation memory lookup': %.1fms", mem_lookup_ms)
+
         stage = "query preparation"
+        t_stage = time.perf_counter()
         resolution = resolve_domain_entities(message)
         rewritten_question = _rewrite_follow_up_question(
             resolution.corrected_transcript,
             memory_history,
         )
         messages_for_agent = memory_history + [{"role": "user", "content": rewritten_question}]
+        prep_ms = (time.perf_counter() - t_stage) * 1000
+        logger.info("[CHAT-TIMING] Stage 'query preparation': %.1fms", prep_ms)
+
         stage = "agent, LLM, or RAG execution"
+        t_stage = time.perf_counter()
         answer = run_agent(
             client,
             model,
@@ -462,12 +488,24 @@ async def chat_endpoint(request: ChatRequest) -> dict[str, str]:
             knowledge_base=knowledge_base,
             top_k=top_k,
         )
+        agent_ms = (time.perf_counter() - t_stage) * 1000
+        logger.info("[CHAT-TIMING] Stage 'agent / LLM / RAG execution': %.1fms", agent_ms)
+
         stage = "conversation memory save"
+        t_stage = time.perf_counter()
         updated_history = memory_history + [
             {"role": "user", "content": message},
             {"role": "assistant", "content": answer},
         ]
         _save_conversation_memory(session_id, updated_history)
+        mem_save_ms = (time.perf_counter() - t_stage) * 1000
+        logger.info("[CHAT-TIMING] Stage 'conversation memory save': %.1fms", mem_save_ms)
+
+        total_ms = (time.perf_counter() - t_req_start) * 1000
+        logger.info(
+            "[CHAT-TIMING] Completed in %.1fms (init=%.1fms, mem=%.1fms, prep=%.1fms, agent=%.1fms, save=%.1fms)",
+            total_ms, init_ms, mem_lookup_ms, prep_ms, agent_ms, mem_save_ms
+        )
     except GroqError as error:
         safe_tb = _format_safe_chat_traceback(error, message, session_id)
         status_code = getattr(error, "status_code", "unknown")

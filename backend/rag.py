@@ -1,3 +1,4 @@
+import hashlib
 import os
 import re
 
@@ -175,11 +176,14 @@ def generate_answer(
             "content": f"Question:\n{query}\n\nRetrieved context:\n{context}",
         }
     )
+    t_llm = time.perf_counter()
     response = client.chat.completions.create(
         model=model,
         messages=conversation,
         temperature=0.2,
     )
+    llm_ms = (time.perf_counter() - t_llm) * 1000
+    rag_debug_log(f"[RAG-TIMING] Groq answer generation: {llm_ms:.1f}ms")
     answer = response.choices[0].message.content
     final_answer = (
         answer.strip()
@@ -208,7 +212,8 @@ class KnowledgeBase:
             url = urlunsplit(
                 (parsed_url.scheme, f"{parsed_url.netloc}:6333", parsed_url.path, parsed_url.query, parsed_url.fragment)
             )
-        self.client = QdrantClient(url=url, api_key=api_key)
+        qdrant_timeout = float(os.getenv("QDRANT_TIMEOUT_SECONDS", "10.0"))
+        self.client = QdrantClient(url=url, api_key=api_key, timeout=qdrant_timeout)
         self._embedding_model: TextEmbedding | None = None
 
     @property
@@ -243,9 +248,19 @@ class KnowledgeBase:
                 time.sleep(delay)
         raise RuntimeError(f"Qdrant Cloud {operation_name} did not complete.")
 
+    @staticmethod
+    def _get_document_hash(path: Path) -> str:
+        hasher = hashlib.sha256()
+        with path.open("rb") as f:
+            while chunk := f.read(65536):
+                hasher.update(chunk)
+        return hasher.hexdigest()[:16]
+
     def index_documents(
-        self, progress_callback: Callable[[str], None] | None = None
+        self, progress_callback: Callable[[str], None] | None = None, force_reindex: bool = False
     ) -> int:
+        force_reindex = force_reindex or os.getenv("FORCE_REINDEX", "false").lower() in ("true", "1")
+
         def log(message: str) -> None:
             print(message, flush=True)
             if progress_callback:
@@ -287,8 +302,49 @@ class KnowledgeBase:
             return 0
 
         indexed_chunks = 0
+        newly_indexed_any = False
         for path in files:
             source = path.relative_to(DATA_DIR).as_posix()
+            doc_hash = self._get_document_hash(path)
+
+            # Check if source vectors already exist in Qdrant and can be reused
+            reusing = False
+            if collection_exists and points_before > 0 and not force_reindex:
+                try:
+                    count_res = self.client.count(
+                        collection_name=COLLECTION_NAME,
+                        count_filter=models.Filter(
+                            must=[models.FieldCondition(key="source", match=models.MatchValue(value=source))]
+                        ),
+                    )
+                    existing_count = count_res.count
+                    if existing_count > 0:
+                        sample = self.client.scroll(
+                            collection_name=COLLECTION_NAME,
+                            scroll_filter=models.Filter(
+                                must=[models.FieldCondition(key="source", match=models.MatchValue(value=source))]
+                            ),
+                            limit=1,
+                            with_payload=True,
+                            with_vectors=False,
+                        )
+                        if sample and sample[0]:
+                            stored_hash = (sample[0][0].payload or {}).get("doc_hash")
+                            # Reuse if hash matches or if stored_hash was not tracked yet (existing vectors)
+                            if stored_hash == doc_hash or stored_hash is None:
+                                reusing = True
+                                log(
+                                    f"Reusing existing Qdrant vectors for '{source}' "
+                                    f"({existing_count} points already indexed, document unchanged)."
+                                )
+                                indexed_chunks += existing_count
+                except Exception as exc:
+                    log(f"Warning: Could not check existing points for {source}: {exc}")
+
+            if reusing:
+                continue
+
+            newly_indexed_any = True
             log(f"Found document:\n{path.name}")
             try:
                 if path.suffix.lower() == ".pdf":
@@ -327,7 +383,7 @@ class KnowledgeBase:
                 models.PointStruct(
                     id=str(uuid5(NAMESPACE_URL, f"{source}:{chunk_index}")),
                     vector=embedding,
-                    payload={"source": source, "document": chunk},
+                    payload={"source": source, "document": chunk, "doc_hash": doc_hash},
                 )
                 for chunk_index, (chunk, embedding) in enumerate(zip(chunks, embeddings))
             ]
@@ -349,42 +405,42 @@ class KnowledgeBase:
             self._remove_stale_source_points(source, expected_ids)
             indexed_chunks += len(chunks)
 
-        try:
-            retrieval_results = self.retrieve_documents(
-                "What about GenLab?", limit=max(10, UPLOAD_BATCH_SIZE)
-            )
-            verified = any(
-                result["source"] == "GenLab_Complete_Corpus.pdf"
-                and "genlab" in result["document"].casefold()
-                for result in retrieval_results
-            )
-        except Exception as error:
-            raise RuntimeError(
-                "Index upload completed, but the automatic GenLab retrieval check failed."
-            ) from error
-        if not verified:
-            returned_sources = sorted({result["source"] for result in retrieval_results})
-            raise RuntimeError(
-                "Index upload completed, but retrieval did not return GenLab information "
-                f"from GenLab_Complete_Corpus.pdf. Sources returned: {returned_sources or 'none'}."
-            )
+        if newly_indexed_any:
+            try:
+                retrieval_results = self.retrieve_documents(
+                    "What about GenLab?", limit=max(10, UPLOAD_BATCH_SIZE)
+                )
+                verified = any(
+                    result["source"] == "GenLab_Complete_Corpus.pdf"
+                    and "genlab" in result["document"].casefold()
+                    for result in retrieval_results
+                )
+            except Exception as error:
+                raise RuntimeError(
+                    "Index upload completed, but the automatic GenLab retrieval check failed."
+                ) from error
+            if not verified:
+                returned_sources = sorted({result["source"] for result in retrieval_results})
+                raise RuntimeError(
+                    "Index upload completed, but retrieval did not return GenLab information "
+                    f"from GenLab_Complete_Corpus.pdf. Sources returned: {returned_sources or 'none'}."
+                )
 
-        try:
-            points_after = self._with_qdrant_retries(
-                lambda: self.client.get_collection(COLLECTION_NAME).points_count or 0,
-                "final point-count check",
-            )
-        except Exception as error:
-            raise ConnectionError(
-                "Index upload and retrieval verification succeeded, but the final Qdrant Cloud "
-                "point count could not be read."
-            ) from error
+        points_final = points_before
+        if newly_indexed_any:
+            try:
+                points_final = self._with_qdrant_retries(
+                    lambda: self.client.get_collection(COLLECTION_NAME).points_count or 0,
+                    "final point-count check",
+                )
+            except Exception as error:
+                raise ConnectionError(
+                    "Index upload and retrieval verification succeeded, but the final Qdrant Cloud "
+                    "point count could not be read."
+                ) from error
+
         log("Indexing completed successfully.")
-        log(
-            'Retrieval verified: "What about GenLab?" returned '
-            "GenLab_Complete_Corpus.pdf with GenLab text."
-        )
-        log(f"Qdrant Cloud points: {points_after}")
+        log(f"Qdrant Cloud points: {points_final}")
         return indexed_chunks
 
     def _remove_stale_source_points(
@@ -435,12 +491,20 @@ class KnowledgeBase:
             rag_debug_log(f"Collection {COLLECTION_NAME!r} does not exist; retrieved 0 chunks.")
             return []
 
+        t_embed = time.perf_counter()
         query_embedding = next(self.embedding_model.query_embed(query)).tolist()
+        embed_ms = (time.perf_counter() - t_embed) * 1000
+
+        t_qdrant = time.perf_counter()
         results = self.client.query_points(
             collection_name=COLLECTION_NAME,
             query=query_embedding,
             limit=limit,
         ).points
+        qdrant_ms = (time.perf_counter() - t_qdrant) * 1000
+        rag_debug_log(
+            f"[RAG-TIMING] Query embedding: {embed_ms:.1f}ms, Qdrant retrieval: {qdrant_ms:.1f}ms (found {len(results)} points)"
+        )
         documents: list[RetrievedDocument] = []
         for result in results:
             payload = result.payload or {}
