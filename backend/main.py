@@ -625,15 +625,19 @@ async def tts_endpoint(request: Request) -> Any:
         raise HTTPException(status_code=400, detail="Text is required for TTS.")
 
     try:
-        audio_bytes, content_type = await async_text_to_speech(text)
+        audio_bytes, audio_media_type = await async_text_to_speech(text)
     except TextToSpeechError as error:
+        logger.error("[TTS-BACKEND] Speech generation failed: %s (status=%s)", error, error.status_code)
         raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+    except Exception as error:
+        logger.error("[TTS-BACKEND] Unexpected TTS failure: %s", error)
+        raise HTTPException(status_code=500, detail="Unexpected error during text-to-speech generation.") from error
 
     if request.headers.get("accept", "").lower().find("application/json") != -1 or request.query_params.get("format") == "json":
         return JSONResponse(
-            {"audio_base64": base64.b64encode(audio_bytes).decode("utf-8"), "content_type": content_type}
+            {"audio_base64": base64.b64encode(audio_bytes).decode("utf-8"), "content_type": audio_media_type}
         )
-    return Response(content=audio_bytes, media_type=content_type)
+    return Response(content=audio_bytes, media_type=audio_media_type)
 
 
 def main() -> None:
