@@ -58,6 +58,8 @@ def _load_conversation_memory(session_id: str) -> list[dict[str, str]]:
             os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             decode_responses=True,
             health_check_interval=30,
+            socket_connect_timeout=2.0,
+            socket_timeout=2.0,
         )
         raw_value = client.get(session_key)
     except redis.RedisError:
@@ -95,6 +97,8 @@ def _save_conversation_memory(session_id: str, messages: list[dict[str, str]]) -
             os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             decode_responses=True,
             health_check_interval=30,
+            socket_connect_timeout=2.0,
+            socket_timeout=2.0,
         )
         client.set(session_key, json.dumps(cleaned, ensure_ascii=False), ex=_get_redis_memory_ttl())
     except redis.RedisError:
@@ -190,12 +194,15 @@ def _format_safe_chat_traceback(error: Exception, *private_values: str) -> str:
     )
     values_to_redact = [
         os.getenv(name, "")
-        for name in ("GROQ_API_KEY", "QDRANT_API_KEY", "REDIS_URL")
+        for name in ("GROQ_API_KEY", "QDRANT_API_KEY", "DEEPGRAM_API_KEY", "REDIS_URL")
     ]
     values_to_redact.extend(private_values)
     for value in values_to_redact:
-        if value:
-            formatted_traceback = formatted_traceback.replace(value, "[REDACTED]")
+        if value and len(str(value).strip()) > 3:
+            formatted_traceback = formatted_traceback.replace(str(value), "[REDACTED]")
+    # Redact any Groq API key patterns or JWT tokens
+    formatted_traceback = re.sub(r"gsk_[a-zA-Z0-9_-]{10,}", "[REDACTED_GROQ_KEY]", formatted_traceback)
+    formatted_traceback = re.sub(r"eyJ[a-zA-Z0-9_-]{20,}", "[REDACTED_JWT_TOKEN]", formatted_traceback)
     return formatted_traceback
     
 
@@ -432,6 +439,9 @@ async def chat_endpoint(request: ChatRequest) -> dict[str, str]:
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id is required.")
 
+    session_prefix = (session_id[:6] + "...") if len(session_id) > 6 else "***"
+    logger.info("[CHAT] Incoming request for session [%s] (message length: %d)", session_prefix, len(message))
+
     stage = "backend initialization"
     try:
         client, model, knowledge_base, top_k = get_backend()
@@ -458,22 +468,41 @@ async def chat_endpoint(request: ChatRequest) -> dict[str, str]:
             {"role": "assistant", "content": answer},
         ]
         _save_conversation_memory(session_id, updated_history)
-    except (RuntimeError, ValueError) as error:
+    except GroqError as error:
+        safe_tb = _format_safe_chat_traceback(error, message, session_id)
+        status_code = getattr(error, "status_code", "unknown")
+        error_msg = getattr(error, "message", str(error))
         logger.error(
-            "[CHAT] Request failed during %s with %s. Redacted traceback follows:\n%s",
+            "[CHAT] Groq request failed during stage '%s' with %s (status=%s, detail=%s).\nSafe traceback:\n%s",
             stage,
             type(error).__name__,
-            _format_safe_chat_traceback(error, message, session_id),
-        )
-        raise HTTPException(status_code=503, detail=str(error)) from error
-    except GroqError as error:
-        logger.error(
-            "[CHAT] Groq request failed with %s (status=%s).",
-            type(error).__name__,
-            getattr(error, "status_code", "unknown"),
+            status_code,
+            error_msg,
+            safe_tb,
         )
         raise HTTPException(status_code=502, detail=f"Groq request failed: {error}") from error
+    except (RuntimeError, ValueError) as error:
+        safe_tb = _format_safe_chat_traceback(error, message, session_id)
+        logger.error(
+            "[CHAT] Request failed during stage '%s' with %s: %s.\nSafe traceback:\n%s",
+            stage,
+            type(error).__name__,
+            error,
+            safe_tb,
+        )
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except Exception as error:
+        safe_tb = _format_safe_chat_traceback(error, message, session_id)
+        logger.error(
+            "[CHAT] Unexpected unhandled error during stage '%s' with %s: %s.\nSafe traceback:\n%s",
+            stage,
+            type(error).__name__,
+            error,
+            safe_tb,
+        )
+        raise HTTPException(status_code=500, detail="Internal server error") from error
 
+    logger.info("[CHAT] Request succeeded for session [%s]", session_prefix)
     return {"response": answer}
 
 
