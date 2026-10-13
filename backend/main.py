@@ -473,6 +473,13 @@ async def chat_endpoint(request: ChatRequest) -> dict[str, str]:
     return {"response": answer}
 
 
+# Explicit OPTIONS handler for CORS preflight on the chat endpoint
+@app.options("/api/chat")
+async def chat_options() -> Response:
+    # FastAPI's CORSMiddleware already adds the appropriate CORS headers.
+    # Returning an empty 200 response satisfies the browser preflight.
+    return Response(status_code=200)
+
 @app.post("/api/stt")
 async def stt_endpoint(request: Request, file: UploadFile | None = File(default=None)) -> dict[str, str]:
     logger.info("[STT-BACKEND] Request received")
