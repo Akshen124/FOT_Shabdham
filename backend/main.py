@@ -260,6 +260,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(title="FOT AI API", version="1.0.0", lifespan=lifespan)
+# Build the list of allowed origins. We always ensure the Vercel front‑end URL is present.
 allowed_origins = [
     origin.strip()
     for origin in os.getenv(
@@ -268,6 +269,11 @@ allowed_origins = [
     ).split(",")
     if origin.strip()
 ]
+# Defensive guard – make sure the Vercel origin is included even if an env var overrides the default.
+vercel_origin = "https://fot-shabdham.vercel.app"
+if vercel_origin not in allowed_origins:
+    allowed_origins.append(vercel_origin)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
