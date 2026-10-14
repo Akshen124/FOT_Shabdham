@@ -78,18 +78,19 @@ const ariaLabel = computed(() => {
   min-height: 3.5rem;
   border-radius: 999px;
   padding: 0.75rem 1.25rem;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(26, 26, 26, 0.12);
-  color: #1a1a1a;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(35, 115, 244, 0.2);
+  color: #0f172a;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 12px 28px rgba(28, 28, 28, 0.08);
+  box-shadow: 0 10px 25px rgba(35, 115, 244, 0.08);
   transition: all 0.2s ease;
 }
 
 .voice-button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 16px 32px rgba(28, 28, 28, 0.12);
+  border-color: #2373F4;
+  box-shadow: 0 14px 30px rgba(35, 115, 244, 0.16);
 }
 
 .voice-button:active:not(:disabled) {
@@ -97,27 +98,29 @@ const ariaLabel = computed(() => {
 }
 
 .voice-button:focus-visible {
-  outline: 2px solid #1a1a1a;
+  outline: 2px solid #2373F4;
   outline-offset: 2px;
 }
 
 .voice-button--listening {
-  background: rgba(255, 255, 255, 0.85);
-  border-color: rgba(200, 37, 54, 0.4);
-  box-shadow: 0 0 0 0 rgba(209, 52, 52, 0.35);
+  background: rgba(255, 255, 255, 0.95);
+  border-color: #2373F4;
+  box-shadow: 0 0 0 0 rgba(35, 115, 244, 0.4);
   animation: pulse 1.4s ease-out infinite;
 }
 
 .voice-button--processing,
 .voice-button--speaking {
-  background: rgba(17, 17, 17, 0.96);
-  color: #fff;
+  background: #2373F4;
+  border-color: #2373F4;
+  color: #ffffff;
+  box-shadow: 0 8px 24px rgba(35, 115, 244, 0.35);
 }
 
 .voice-button--error {
-  background: rgba(128, 77, 77, 0.12);
-  border-color: rgba(128, 77, 77, 0.24);
-  color: #4d2a2a;
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.25);
+  color: #b91c1c;
 }
 
 .voice-button--disabled {
@@ -137,13 +140,13 @@ const ariaLabel = computed(() => {
 
 @keyframes pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(217, 59, 76, 0.35);
+    box-shadow: 0 0 0 0 rgba(35, 115, 244, 0.4);
   }
   70% {
-    box-shadow: 0 0 0 10px rgba(217, 59, 76, 0);
+    box-shadow: 0 0 0 10px rgba(35, 115, 244, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(217, 59, 76, 0);
+    box-shadow: 0 0 0 0 rgba(35, 115, 244, 0);
   }
 }
 </style>

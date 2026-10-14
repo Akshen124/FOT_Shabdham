@@ -1,6 +1,6 @@
 <template>
   <main>
-    <Navigation :class="{ 'nav--visible': isStarted }" />
+    <Navigation />
     <Hero @started="isStarted = true" />
   </main>
 </template>

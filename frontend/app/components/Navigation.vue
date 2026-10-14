@@ -7,15 +7,15 @@
       </a>
 
       <!-- Desktop links -->
-      <nav class="nav__links" aria-label="Main navigation">
+      <!-- <nav class="nav__links" aria-label="Main navigation">
         <a href="#work" class="nav__link">Work</a>
         <a href="#agency" class="nav__link">Agency</a>
         <a href="#careers" class="nav__link">Careers</a>
         <a href="#store" class="nav__link">Store</a>
-      </nav>
+      </nav> -->
 
       <!-- CTA -->
-      <a href="#contact" class="nav__cta">Let's talk</a>
+      <!-- <a href="#contact" class="nav__cta">Let's talk</a> -->
 
       <!-- Mobile toggle -->
       <button
@@ -63,12 +63,12 @@ const mobileOpen = ref(false)
   width: 100%;
   z-index: 100;
   padding: 0 clamp(1.5rem, 4vw, 3.5rem);
-  opacity: 0;
-  transform: translateY(-16px);
-  pointer-events: none;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
   transition:
-    opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.15s,
-    transform 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.15s;
+    opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.85s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .nav--visible {
@@ -91,19 +91,20 @@ const mobileOpen = ref(false)
   font-size: 1.25rem;
   font-weight: 600;
   letter-spacing: -0.02em;
-  color: #1a1a1a;
+  color: #0f172a;
   transition: opacity 0.3s ease;
 }
 
 .nav__logo:hover {
-  opacity: 0.7;
+  opacity: 0.8;
 }
 
 .nav__logo-reg {
   font-size: 0.65em;
   vertical-align: super;
   margin-left: 1px;
-  opacity: 0.6;
+  color: #2373F4;
+  opacity: 1;
 }
 
 /* Desktop links */
@@ -114,8 +115,8 @@ const mobileOpen = ref(false)
 
 .nav__link {
   font-size: 0.875rem;
-  font-weight: 400;
-  color: #444;
+  font-weight: 500;
+  color: #475569;
   letter-spacing: 0.01em;
   transition: color 0.3s ease;
   position: relative;
@@ -127,13 +128,14 @@ const mobileOpen = ref(false)
   bottom: -4px;
   left: 0;
   width: 0;
-  height: 1px;
-  background: #1a1a1a;
+  height: 2px;
+  background: #2373F4;
+  border-radius: 2px;
   transition: width 0.3s ease;
 }
 
 .nav__link:hover {
-  color: #1a1a1a;
+  color: #2373F4;
 }
 
 .nav__link:hover::after {
@@ -144,17 +146,20 @@ const mobileOpen = ref(false)
 .nav__cta {
   font-size: 0.875rem;
   font-weight: 500;
-  color: #1a1a1a;
+  color: #2373F4;
   padding: 0.5rem 1.25rem;
-  border: 1px solid rgba(26, 26, 26, 0.15);
+  border: 1px solid rgba(35, 115, 244, 0.35);
+  background: rgba(255, 255, 255, 0.85);
   border-radius: 100px;
+  box-shadow: 0 2px 8px rgba(35, 115, 244, 0.08);
   transition: all 0.3s ease;
 }
 
 .nav__cta:hover {
-  background: #1a1a1a;
-  color: #fff;
-  border-color: #1a1a1a;
+  background: #2373F4;
+  color: #ffffff;
+  border-color: #2373F4;
+  box-shadow: 0 4px 16px rgba(35, 115, 244, 0.32);
 }
 
 /* Burger */
@@ -170,7 +175,7 @@ const mobileOpen = ref(false)
   display: block;
   width: 100%;
   height: 1.5px;
-  background: #1a1a1a;
+  background: #2373F4;
   transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   transform-origin: center;
 }
@@ -189,7 +194,8 @@ const mobileOpen = ref(false)
   top: 72px;
   left: 0;
   width: 100%;
-  background: rgba(232, 228, 223, 0.98);
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid rgba(35, 115, 244, 0.12);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   padding: 2rem clamp(1.5rem, 4vw, 3.5rem) 3rem;
@@ -202,12 +208,13 @@ const mobileOpen = ref(false)
   font-size: 1.5rem;
   font-weight: 500;
   font-family: 'Outfit', sans-serif;
-  color: #1a1a1a;
-  transition: opacity 0.3s ease;
+  color: #0f172a;
+  transition: all 0.3s ease;
 }
 
 .nav__mobile-link:hover {
-  opacity: 0.6;
+  color: #2373F4;
+  opacity: 1;
 }
 
 .nav__mobile-cta {
@@ -215,16 +222,18 @@ const mobileOpen = ref(false)
   margin-top: 1rem;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #fff;
-  background: #1a1a1a;
+  color: #ffffff;
+  background: #2373F4;
   padding: 0.75rem 1.5rem;
   border-radius: 100px;
   text-align: center;
-  transition: opacity 0.3s ease;
+  box-shadow: 0 4px 14px rgba(35, 115, 244, 0.3);
+  transition: all 0.3s ease;
 }
 
 .nav__mobile-cta:hover {
-  opacity: 0.85;
+  background: #1b63d7;
+  box-shadow: 0 6px 18px rgba(35, 115, 244, 0.4);
 }
 
 /* Transition */

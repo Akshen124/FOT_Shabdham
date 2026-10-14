@@ -28,8 +28,9 @@
       </p>
 
       <h1 class="hero__heading font-display">
-        <span class="hero__heading-line">A legend enters the chat.</span>
-        <span class="hero__heading-line hero__heading-line--italic">Let's make magic.</span>
+        <span class="hero__heading-line hero__heading-line--cyber" data-text="A legend enters the chat.">
+          Hey, I’m Shabdam. Let’s make some magic!<span class="hero__cyber-cursor" aria-hidden="true">_</span>
+        </span>
       </h1>
 
       <div class="hero__actions">
@@ -58,7 +59,7 @@
             v-model="input"
             class="hero__input"
             type="text"
-            placeholder="What are the services they provide?"
+            placeholder="Enter your request"
             :disabled="isThinking"
             aria-label="Type your message"
           />
@@ -233,10 +234,11 @@ function toggleVoiceInput() {
   inset: 0;
   background:
     radial-gradient(
-      ellipse 80% 70% at 62% 46%,
-      #dcd9d4 0%,
-      #cac5bf 45%,
-      #aba7a1 100%
+      ellipse 85% 75% at 65% 44%,
+      #ffffff 0%,
+      #f4f8fe 42%,
+      #eaf1fd 78%,
+      #dde8fb 100%
     );
   z-index: 0;
 }
@@ -275,9 +277,9 @@ function toggleVoiceInput() {
 
 .hero__intro {
   font-size: clamp(0.875rem, 1.2vw, 1rem);
-  font-weight: 400;
+  font-weight: 500;
   line-height: 1.7;
-  color: #6b6560;
+  color: #475569;
   margin-bottom: 1.5rem;
   letter-spacing: 0.01em;
 }
@@ -286,7 +288,7 @@ function toggleVoiceInput() {
   font-size: clamp(2rem, 4.5vw, 3.5rem);
   font-weight: 600;
   line-height: 1.15;
-  color: #1a1a1a;
+  color: #0f172a;
   letter-spacing: -0.03em;
   margin-bottom: 2rem;
 }
@@ -295,10 +297,121 @@ function toggleVoiceInput() {
   display: block;
 }
 
+.hero__heading-line--cyber {
+  display: inline-block;
+  position: relative;
+  font-family: 'Space Mono', 'Courier New', 'SF Mono', Menlo, Consolas, monospace;
+  font-size: clamp(1.75rem, 3.8vw, 3.1rem);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+  background: linear-gradient(135deg, #0f172a 35%, #2373F4 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 14px rgba(35, 115, 244, 0.26));
+  user-select: none;
+}
+
+.hero__heading-line--cyber::before,
+.hero__heading-line--cyber::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background: inherit;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hero__heading-line--cyber::before {
+  left: -2px;
+  text-shadow: 2px 0 rgba(35, 115, 244, 0.65);
+  clip-path: inset(20% 0 50% 0);
+  animation: cyber-glitch-slice-1 3.8s infinite linear alternate-reverse;
+}
+
+.hero__heading-line--cyber::after {
+  left: 2px;
+  text-shadow: -2px 0 rgba(96, 165, 250, 0.65);
+  clip-path: inset(55% 0 15% 0);
+  animation: cyber-glitch-slice-2 3.1s infinite linear alternate-reverse;
+}
+
+.hero__cyber-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  font-weight: 800;
+  color: #2373F4;
+  -webkit-text-fill-color: #2373F4;
+  text-shadow: 0 0 10px rgba(35, 115, 244, 0.85);
+  animation: cyber-cursor-blink 0.9s step-start infinite;
+}
+
+@keyframes cyber-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes cyber-glitch-slice-1 {
+  0%, 88% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  89% {
+    transform: translate(-3px, 1px);
+    opacity: 0.85;
+    clip-path: inset(10% 0 60% 0);
+  }
+  91% {
+    transform: translate(2px, -1px);
+    opacity: 0.9;
+    clip-path: inset(38% 0 25% 0);
+  }
+  93% {
+    transform: translate(-1px, 2px);
+    opacity: 0.75;
+    clip-path: inset(68% 0 12% 0);
+  }
+  95%, 100% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+}
+
+@keyframes cyber-glitch-slice-2 {
+  0%, 84% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  85% {
+    transform: translate(3px, -1px);
+    opacity: 0.85;
+    clip-path: inset(48% 0 18% 0);
+  }
+  87% {
+    transform: translate(-2px, 1px);
+    opacity: 0.9;
+    clip-path: inset(22% 0 48% 0);
+  }
+  89% {
+    transform: translate(1px, -2px);
+    opacity: 0.75;
+    clip-path: inset(12% 0 72% 0);
+  }
+  91%, 100% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+}
+
 .hero__heading-line--italic {
   font-style: italic;
-  font-weight: 400;
-  color: #444;
+  font-weight: 500;
+  color: #2373F4;
   margin-top: 0.15em;
 }
 
@@ -334,9 +447,14 @@ function toggleVoiceInput() {
   color: #3c3a36;
 }
 
+.hero__thinking {
+  color: #2373F4;
+  font-weight: 500;
+}
+
 .hero__error,
 .hero__voice-error {
-  color: #7a3b3b;
+  color: #dc2626;
 }
 
 .hero__input-row {
@@ -358,63 +476,73 @@ function toggleVoiceInput() {
 .hero__input {
   flex: 1;
   min-width: 0;
-  border: 1px solid rgba(26, 26, 26, 0.12);
-  background: rgba(255, 255, 255, 0.7);
-  color: #1a1a1a;
+  border: 1px solid rgba(35, 115, 244, 0.2);
+  background: rgba(255, 255, 255, 0.85);
+  color: #0f172a;
   border-radius: 999px;
-  padding: 0.95rem 1.1rem;
+  padding: 0.95rem 1.2rem;
   font-size: 0.95rem;
   outline: none;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 10px rgba(35, 115, 244, 0.04);
+  transition: all 0.25s ease;
 }
 
 .hero__input:focus {
-  border-color: rgba(26, 26, 26, 0.22);
-  box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.08);
+  border-color: #2373F4;
+  box-shadow: 0 0 0 3px rgba(35, 115, 244, 0.18);
+  background: #ffffff;
 }
 
 .hero__send {
   border-radius: 999px;
-  border: 1px solid rgba(26, 26, 26, 0.12);
-  background: #1a1a1a;
+  border: 1px solid #2373F4;
+  background: #2373F4;
   color: #fff;
-  padding: 0.9rem 1.3rem;
-  font-size: 0.8rem;
+  padding: 0.9rem 1.4rem;
+  font-size: 0.85rem;
   font-weight: 500;
+  box-shadow: 0 4px 14px rgba(35, 115, 244, 0.3);
   transition: all 0.2s ease;
 }
 
 .hero__send:hover:not(:disabled) {
-  opacity: 0.92;
+  background: #1b63d7;
+  border-color: #1b63d7;
+  box-shadow: 0 6px 18px rgba(35, 115, 244, 0.4);
+  transform: translateY(-1px);
 }
 
 .hero__send:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
-  .hero__stop {
-    border-radius: 999px;
-    border: 1px solid rgba(26, 26, 26, 0.12);
-    background: #201c1cff; /* dark red */
-    color: #fff;
-    padding: 0.9rem 1.3rem;
-    font-size: 0.8rem;
-    font-weight: 500;
-    transition: all 0.2s ease;
-  }
+.hero__stop {
+  border-radius: 999px;
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  background: #ef4444;
+  color: #fff;
+  padding: 0.9rem 1.3rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.25);
+  transition: all 0.2s ease;
+}
 
-  .hero__stop:hover:not(:disabled) {
-    opacity: 0.92;
-  }
+.hero__stop:hover:not(:disabled) {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
 
-  .hero__stop:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
+.hero__stop:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 
-  .hero__voice-area {
+.hero__voice-area {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -432,7 +560,7 @@ function toggleVoiceInput() {
   margin-bottom: 1rem;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-color: rgba(26, 26, 26, 0.25) transparent;
+  scrollbar-color: rgba(35, 115, 244, 0.3) transparent;
   scrollbar-width: thin;
 }
 
@@ -477,10 +605,11 @@ function toggleVoiceInput() {
 }
 
 .hero__loader-dot {
-  width: 6px;
-  height: 6px;
-  background: #999;
+  width: 7px;
+  height: 7px;
+  background: #2373F4;
   border-radius: 50%;
+  box-shadow: 0 0 10px rgba(35, 115, 244, 0.6);
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
 

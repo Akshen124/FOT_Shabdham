@@ -104,21 +104,29 @@ onUnmounted(() => {
 
 .chat-message__bubble {
   max-width: min(100%, 28rem);
-  padding: 0.85rem 1rem 0.9rem;
+  padding: 0.85rem 1.15rem 0.9rem;
+  border-radius: 1.25rem;
 }
 
 .chat-message--user .chat-message__bubble {
-  background: rgba(17, 17, 17, 0.96);
-  color: #fff;
+  background: #2373F4;
+  color: #ffffff;
+  border-radius: 1.25rem 1.25rem 0.25rem 1.25rem;
+  box-shadow: 0 4px 14px rgba(35, 115, 244, 0.28);
 }
 
 .chat-message__label {
   display: inline-block;
-  font-size: 0.62rem;
+  font-size: 0.65rem;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  opacity: 0.7;
+  opacity: 0.85;
   margin-bottom: 0.4rem;
+}
+
+.chat-message--assistant .chat-message__label {
+  color: #2373F4;
 }
 
 .chat-message__bubble p {
@@ -126,22 +134,22 @@ onUnmounted(() => {
   line-height: 1.6;
   color: inherit;
   white-space: pre-wrap;
-  }
+}
 
-  /* Assistant message typography */
-  .chat-message--assistant .chat-message__bubble p {
-    font-size: 1.625rem; /* ~26px */
-    line-height: 1.3;
-    color: #000000;
-    font-family: "HelveticaNowDisplay", 'Inter', sans-serif;
-  }
+/* Assistant message typography */
+.chat-message--assistant .chat-message__bubble p {
+  font-size: 1.625rem; /* ~26px */
+  line-height: 1.3;
+  color: #0f172a;
+  font-family: "HelveticaNowDisplay", 'Inter', sans-serif;
+}
 
-  .caret {
-    display: inline-block;
-    width: 1px;
-    background: #000;
-    animation: blink 1s steps(2, start) infinite;
-    margin-left: 2px;
-  }
-  @keyframes blink { to { visibility: hidden; } }
+.caret {
+  display: inline-block;
+  width: 2px;
+  background: #2373F4;
+  animation: blink 1s steps(2, start) infinite;
+  margin-left: 3px;
+}
+@keyframes blink { to { visibility: hidden; } }
 </style>

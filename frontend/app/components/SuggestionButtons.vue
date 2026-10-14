@@ -35,28 +35,30 @@ defineEmits<{
   align-items: center;
   padding: 0.6rem 1.25rem;
   font-size: 0.8125rem;
-  font-weight: 450;
-  color: #333;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(26, 26, 26, 0.08);
+  font-weight: 500;
+  color: #1e293b;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(35, 115, 244, 0.18);
   border-radius: 100px;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(35, 115, 244, 0.05);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
   cursor: pointer;
   text-decoration: none;
 }
 
 .hero__btn:hover {
-  background: #1a1a1a;
-  color: #fff;
-  border-color: #1a1a1a;
+  background: #2373F4;
+  color: #ffffff;
+  border-color: #2373F4;
+  box-shadow: 0 4px 14px rgba(35, 115, 244, 0.28);
   transform: translateY(-2px);
 }
 
 .hero__btn:focus-visible {
-  outline: 2px solid #1a1a1a;
+  outline: 2px solid #2373F4;
   outline-offset: 2px;
 }
 </style>

@@ -11,7 +11,6 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 
 // ── State ──
-// ── State ──
 const containerRef = ref<HTMLDivElement | null>(null)
 const isLoaded = ref(false)
 const isStarted = ref(false)
@@ -29,9 +28,11 @@ let renderer: any = null
 let scene: any = null
 let camera: any = null
 let characterGroup: any = null
-let staticBody: any = null
-let neckPivot: any = null
-let tvHeadPivot: any = null
+let shabdamModel: any = null
+let headBone: any = null
+let neck2Bone: any = null
+let initialHeadRot: any = null
+let initialNeck2Rot: any = null
 let screenMesh: any = null
 let screenCanvas: HTMLCanvasElement | null = null
 let screenCtx: CanvasRenderingContext2D | null = null
@@ -54,79 +55,51 @@ let eyeTargetY = 0
 let eyeCurrentX = 0
 let eyeCurrentY = 0
 
-// Model constants
-const MODEL_CENTER_Y = 0.95
-const SPLIT_Y = 0.815
+// Model constants (TV screen center is Y=0.22 in Shabdam.glb)
+const MODEL_CENTER_Y = 0.22
 
 // Layout & Entrance Transition Positions (Center -> Right on Click)
 let basePosZ = 0
-let finalPosX = 0.58
-let finalPosY = -0.36
-let finalScale = 1.06
-let startPosX = 0.0
-let startPosY = -0.32
-let startScale = 0.94
+let finalPosX = 1.05
+let finalPosY = -0.34
+let finalScale = 0.58
+let finalBaseRotY = -0.24
+let startPosX = 0.52
+let startPosY = -0.28
+let startScale = 0.54
+let startBaseRotY = -0.16
 
-let targetPosX = 0.0
-let targetPosY = -0.32
-let targetScale = 0.94
-let currentPosX = 0.0
-let currentPosY = -0.32
-let currentScale = 0.94
+let targetPosX = 0.52
+let targetPosY = -0.28
+let targetScale = 0.54
+let targetBaseRotY = -0.16
+let currentPosX = 0.52
+let currentPosY = -0.28
+let currentScale = 0.54
+let currentBaseRotY = -0.16
 
 // Reduced motion / touch
 let prefersReducedMotion = false
 let isTouchDevice = false
 
-// ── Screen animation state ──
-type ScreenMode = 'eye' | 'start' | 'boot' | 'terminal'
-let currentScreenMode: ScreenMode = 'eye'
-let screenModeTimer = 0
-let startPulseTimer = 0
-
-// Eye animation state
+// ── Eye animation state ──
+const BLINK_INTERVAL = 3.0 // Blink every 3 seconds
 let blinkState: 'open' | 'closing' | 'closed' | 'opening' = 'open'
 let blinkTimer = 0
-let nextBlinkTime = 3.5
+let nextBlinkTime = BLINK_INTERVAL
 let blinkProgress = 0
 let eyeMicroX = 0
 let eyeMicroY = 0
 let eyeMicroTimer = 0
 
-// Boot sequence state
-let bootTimer = 0
-let bootCursorVisible = true
-let bootCursorTimer = 0
-
-// Terminal state
-let termCurrentLine = 0
-let termCharIndex = 0
-let termTimer = 0
-let termCursorVisible = true
-let termCursorTimer = 0
-
-// Glitch state
+// ── Glitch state ──
 let glitchTimer = 0
 let nextGlitchTime = 7.5
 let glitchActive = false
 let glitchDuration = 0
 
-// CRT scanline offset
+// ── CRT scanline offset ──
 let scanlineOffset = 0
-
-// Terminal content
-const TERM_LINES = [
-  'GENLAB OS v3.7.1 [RELEASE]',
-  '----------------------------',
-  '> initializing neural core...',
-  '> loading assistant personality...',
-  '> optical sensors: ONLINE',
-  '> synaptic sync: 99.4%',
-  '',
-  'genlab@assistant:~$ status',
-  '[SYS] STATUS: ONLINE',
-  '[SYS] READY FOR INTERACTION.',
-]
 
 onMounted(async () => {
   if (!containerRef.value) return
@@ -180,177 +153,84 @@ onMounted(async () => {
   setupScreenCanvas()
 
   // ── Character Hierarchy ──
-  // characterGroup
-  //   ├── staticBody   (complete continuous sweater torso + collar cup)
-  //   └── tvHeadPivot  (mounted inside the collar socket at Y = 0.815, pivots with cursor)
-  //         ├── tvMesh (grayish metallic silver TV casing, controls & cables)
-  //         └── screenMesh (living AI CRT display)
   characterGroup = new THREE.Group()
-  staticBody = new THREE.Group()
-  tvHeadPivot = new THREE.Group()
+  scene.add(characterGroup)
 
-  characterGroup.add(staticBody)
-  characterGroup.add(tvHeadPivot)
-
-  const SPLIT_Y = 0.815
-  staticBody.position.set(0, -MODEL_CENTER_Y, 0)
-  tvHeadPivot.position.set(0, SPLIT_Y - MODEL_CENTER_Y, 0)
-
-  // ── Load Original Character Model: base.glb with seamless overlapping joint ──
+  // ── Load Shabdam Robot Model ──
   const loader = new GLTFLoader()
   try {
-    const gltf = await loader.loadAsync('/models/base.glb')
+    const gltf = await loader.loadAsync('/models/Shabdam.glb')
 
-    let originalMesh: any = null
-    gltf.scene.traverse((child: any) => {
-      if (child.isMesh) originalMesh = child
-    })
+    // Hide extraneous helper planes from the GLTF scene
+    const plane = gltf.scene.getObjectByName('Plane001') || gltf.scene.getObjectByName('Plane.001')
+    if (plane) plane.visible = false
 
-    if (!originalMesh) {
-      throw new Error('No mesh found in base.glb')
-    }
+    const maps = gltf.scene.getObjectByName('Maps')
+    if (maps) maps.visible = false
 
-    const geom = originalMesh.geometry
-    const pos = geom.attributes.position
-    const normal = geom.attributes.normal
-    const uv = geom.attributes.uv
-    const index = geom.index
+    const empty = gltf.scene.getObjectByName('Empty002') || gltf.scene.getObjectByName('Empty.002')
+    if (empty) empty.visible = false
 
-    // 4cm overlap zone ensures airtight ball-and-socket joint with ZERO gaps or holes!
-    const OVERLAP = 0.040
-    const bodyIndices: number[] = []
-    const tvIndices: number[] = []
-    const numFaces = index ? index.count / 3 : pos.count / 3
+    shabdamModel = gltf.scene.getObjectByName('Lisa') || gltf.scene
+    characterGroup.add(shabdamModel)
 
-    for (let f = 0; f < numFaces; f++) {
-      const i0 = index ? index.getX(f * 3 + 0) : f * 3 + 0
-      const i1 = index ? index.getX(f * 3 + 1) : f * 3 + 1
-      const i2 = index ? index.getX(f * 3 + 2) : f * 3 + 2
+    // Center Shabdam vertically around TV screen
+    shabdamModel.position.set(0, -MODEL_CENTER_Y, 0)
 
-      const y0 = pos.getY(i0)
-      const y1 = pos.getY(i1)
-      const y2 = pos.getY(i2)
-      const avgY = (y0 + y1 + y2) / 3
-      const maxY = Math.max(y0, y1, y2)
-      const minY = Math.min(y0, y1, y2)
+    // Find bones for natural animated head and neck tracking
+    headBone = shabdamModel.getObjectByName('head')
+    neck2Bone = shabdamModel.getObjectByName('neck2')
 
-      if (minY <= SPLIT_Y + OVERLAP && avgY <= SPLIT_Y + OVERLAP) {
-        bodyIndices.push(i0, i1, i2)
-      }
-      if (maxY >= SPLIT_Y - OVERLAP && avgY >= SPLIT_Y - OVERLAP) {
-        tvIndices.push(i0, i1, i2)
-      }
-    }
+    if (headBone) initialHeadRot = headBone.rotation.clone()
+    if (neck2Bone) initialNeck2Rot = neck2Bone.rotation.clone()
 
-    function buildSubMesh(indices: number[], name: string) {
-      const newGeom = new THREE.BufferGeometry()
-      const usedVerts = new Map<number, number>()
-      const newPositions: number[] = []
-      const newNormals: number[] = []
-      const newUvs: number[] = []
-      const newIdx: number[] = []
-
-      for (let i = 0; i < indices.length; i++) {
-        const origIdx = indices[i]
-        if (!usedVerts.has(origIdx)) {
-          const newVIdx = newPositions.length / 3
-          usedVerts.set(origIdx, newVIdx)
-          newPositions.push(pos.getX(origIdx), pos.getY(origIdx), pos.getZ(origIdx))
-          if (normal) newNormals.push(normal.getX(origIdx), normal.getY(origIdx), normal.getZ(origIdx))
-          if (uv) newUvs.push(uv.getX(origIdx), uv.getY(origIdx))
-        }
-        newIdx.push(usedVerts.get(origIdx)!)
-      }
-
-      newGeom.setAttribute('position', new THREE.Float32BufferAttribute(newPositions, 3))
-      if (normal) newGeom.setAttribute('normal', new THREE.Float32BufferAttribute(newNormals, 3))
-      if (uv) newGeom.setAttribute('uv', new THREE.Float32BufferAttribute(newUvs, 2))
-      newGeom.setIndex(newIdx)
-      newGeom.computeVertexNormals()
-
-      const mesh = new THREE.Mesh(newGeom)
-      mesh.name = name
-      return mesh
-    }
-
-    // 1. Sweater Torso & Collar (Full continuous sweater in #817073 knit texture)
-    const bodyMesh = buildSubMesh(bodyIndices, 'Sweater')
-    const { normalTexture, diffuseTexture } = createSweaterTextures(THREE)
-    bodyMesh.material = new THREE.MeshStandardMaterial({
-      color: 0x817073,
-      map: diffuseTexture,
-      normalMap: normalTexture,
-      normalScale: new THREE.Vector2(1.6, 1.6),
-      roughness: 0.95,
-      metalness: 0.0,
-      envMapIntensity: 0.30,
-    })
-    bodyMesh.position.set(0, 0, 0)
-    staticBody.add(bodyMesh)
-
-    // 2. TV Head Assembly (Pivots seamlessly inside the collar cup in grayish metallic silver)
-    const tvMesh = buildSubMesh(tvIndices, 'TV_Head')
-    tvMesh.material = new THREE.MeshStandardMaterial({
-      color: 0x8e97a4, // Sleek grayish metallic silver
-      roughness: 0.28, // Brushed metallic finish
-      metalness: 0.82, // Metallic depth
-      envMapIntensity: 1.15, // Studio reflections
-    })
-    tvMesh.position.set(0, -SPLIT_Y, 0)
-    tvHeadPivot.add(tvMesh)
-
-    // 6. Seamless Curved CRT Screen Glass (Soft satin anti-glare CRT monitor finish)
-    if (screenTexture) {
-      // Dark inner TV tube cavity backing
-      const cavityGeo = new THREE.PlaneGeometry(0.96, 0.86)
-      const cavityMat = new THREE.MeshBasicMaterial({ color: 0x050608 })
-      const cavityMesh = new THREE.Mesh(cavityGeo, cavityMat)
-      cavityMesh.position.set(0.100, 1.401 - SPLIT_Y, 0.580)
-      tvHeadPivot.add(cavityMesh)
-
-      // Front 3D spherical CRT phosphor tube glass
-      const screenWidth = 0.94
-      const screenHeight = 0.84
-      const screenGeo = new THREE.PlaneGeometry(screenWidth, screenHeight, 48, 48)
-
-      const pos = screenGeo.attributes.position
-      const halfW = screenWidth / 2
-      const halfH = screenHeight / 2
-      const maxCornerSq = halfW * halfW + halfH * halfH
-      const sphereR = 1.80
-      const cornerZ = Math.sqrt(sphereR * sphereR - maxCornerSq)
-      const domeScale = 0.65
-
-      for (let i = 0; i < pos.count; i++) {
-        const px = pos.getX(i)
-        const py = pos.getY(i)
-        const distSq = px * px + py * py
-        const z = (Math.sqrt(Math.max(0.001, sphereR * sphereR - distSq)) - cornerZ) * domeScale
-        pos.setZ(i, Math.max(0, z))
-      }
-      screenGeo.computeVertexNormals()
-
-      const screenMat = new THREE.MeshStandardMaterial({
+    // Find the TV screen mesh and map dynamic CRT living canvas
+    screenMesh = shabdamModel.getObjectByName('Screen')
+    if (screenMesh && screenTexture) {
+      screenMesh.material = new THREE.MeshStandardMaterial({
         map: screenTexture,
-        roughness: 0.42,
+        emissive: new THREE.Color(0xffffff),
+        emissiveMap: screenTexture,
+        emissiveIntensity: 1.15,
+        roughness: 0.32,
         metalness: 0.0,
         envMapIntensity: 0.25,
         toneMapped: false,
       })
-      screenMesh = new THREE.Mesh(screenGeo, screenMat)
-      screenMesh.renderOrder = 10
-      screenMesh.position.set(0.100, 1.401 - SPLIT_Y, 0.590)
-      tvHeadPivot.add(screenMesh)
     }
+
+    // Hide occlusion overlay meshes
+    const screenGlow = shabdamModel.getObjectByName('ScreenGlow')
+    if (screenGlow) screenGlow.visible = false
+
+    const raycasterMesh = shabdamModel.getObjectByName('Raycaster')
+    if (raycasterMesh) raycasterMesh.visible = false
+
+    // Tint shirt/sweater to rich dark blue while keeping original 4K fabric scan
+    const bodyMesh = shabdamModel.getObjectByName('BodyHP')
+    if (bodyMesh && bodyMesh.material) {
+      bodyMesh.material.color = new THREE.Color(0x0d235c)
+      bodyMesh.material.roughness = 0.95
+      bodyMesh.material.metalness = 0.0
+    }
+
+    // Enhance studio reflections on TV casing and materials
+    shabdamModel.traverse((child: any) => {
+      if (child.isMesh) {
+        child.castShadow = false
+        child.receiveShadow = false
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach((m: any) => { m.envMapIntensity = 1.0 })
+          } else {
+            child.material.envMapIntensity = 1.0
+          }
+        }
+      }
+    })
 
     // Initial responsive scale and positioning
     updateResponsiveDimensions(width, height)
-
-    scene.add(characterGroup)
-
-    // Start directly with living Eye screen mode
-    currentScreenMode = 'eye'
-    screenModeTimer = 0
 
     isLoaded.value = true
     emit('loaded')
@@ -413,121 +293,14 @@ function setupScreenCanvas() {
   screenCtx = screenCanvas.getContext('2d')!
 
   screenTexture = new THREE.CanvasTexture(screenCanvas)
+  screenTexture.wrapS = THREE.RepeatWrapping
+  screenTexture.repeat.x = -1
+  screenTexture.offset.x = 1
   screenTexture.minFilter = THREE.LinearFilter
   screenTexture.magFilter = THREE.LinearFilter
   screenTexture.colorSpace = THREE.SRGBColorSpace
 }
 
-function createSweaterTextures(THREE: any) {
-  const size = 512
-  const wales = 12 // horizontal knit stitch columns
-  const courses = 16 // vertical knit stitch rows
-
-  // 1. Generate height and ambient occlusion data
-  const heightMap = new Float32Array(size * size)
-  const aoMap = new Float32Array(size * size)
-
-  for (let y = 0; y < size; y++) {
-    const vNorm = y / size
-    const v = vNorm * courses
-    const row = Math.floor(v)
-    const vFrac = v - row // [0, 1] within stitch row
-    // Stagger every other row by 0.5 (interlocking loop structure)
-    const uShift = (row % 2) * 0.5
-
-    for (let x = 0; x < size; x++) {
-      const uNorm = x / size
-      const u = (uNorm * wales + uShift) % 1
-      const sx = u * 2 - 1 // [-1, 1] across stitch
-      const sy = vFrac * 2 - 1 // [-1, 1] vertically
-
-      // Interlocking knit loop V-shape
-      const vTaper = 0.45 * (1 - sy * 0.25)
-      const legDist = Math.abs(Math.abs(sx) - vTaper)
-      const legHeight = Math.exp(-(legDist * legDist) / 0.05) * (1 - 0.25 * (sy * sy))
-
-      // Top loop cross-strand
-      const topLoop = Math.exp(-((sy - 0.75) * (sy - 0.75)) / 0.04) * 0.55 * Math.exp(-(sx * sx) / 0.3)
-      const stitchHeight = Math.max(legHeight, topLoop)
-
-      // Fine yarn twist structure (heather/ply fibers)
-      const yarnTwist = Math.sin(sx * 28 + sy * 36) * 0.04 + Math.sin(sx * 56 - sy * 20) * 0.02
-
-      const h = Math.max(0, Math.min(1, stitchHeight + yarnTwist))
-      heightMap[y * size + x] = h
-
-      // Crevice shadows / AO
-      aoMap[y * size + x] = Math.pow(h, 0.45)
-    }
-  }
-
-  // 2. Normal Map Canvas
-  const normalCanvas = document.createElement('canvas')
-  normalCanvas.width = size
-  normalCanvas.height = size
-  const normalCtx = normalCanvas.getContext('2d')!
-  const normalImg = normalCtx.createImageData(size, size)
-  const normalData = normalImg.data
-  const bumpStrength = 3.2
-
-  for (let y = 0; y < size; y++) {
-    const yPrev = (y - 1 + size) % size
-    const yNext = (y + 1) % size
-    for (let x = 0; x < size; x++) {
-      const xPrev = (x - 1 + size) % size
-      const xNext = (x + 1) % size
-
-      const dx = (heightMap[y * size + xNext] - heightMap[y * size + xPrev]) * bumpStrength
-      const dy = (heightMap[yNext * size + x] - heightMap[yPrev * size + x]) * bumpStrength
-      const dz = 1.0
-
-      const len = Math.sqrt(dx * dx + dy * dy + dz * dz)
-      const nx = -dx / len
-      const ny = -dy / len
-      const nz = dz / len
-
-      const idx = (y * size + x) * 4
-      normalData[idx + 0] = Math.round(((nx + 1) * 0.5) * 255)
-      normalData[idx + 1] = Math.round(((ny + 1) * 0.5) * 255)
-      normalData[idx + 2] = Math.round(((nz + 1) * 0.5) * 255)
-      normalData[idx + 3] = 255
-    }
-  }
-  normalCtx.putImageData(normalImg, 0, 0)
-
-  // 3. Diffuse Fabric Detail Canvas (adds tactile yarn fiber shading & AO crevices to the base color)
-  const diffuseCanvas = document.createElement('canvas')
-  diffuseCanvas.width = size
-  diffuseCanvas.height = size
-  const diffuseCtx = diffuseCanvas.getContext('2d')!
-  const diffuseImg = diffuseCtx.createImageData(size, size)
-  const diffuseData = diffuseImg.data
-
-  for (let i = 0; i < size * size; i++) {
-    const ao = aoMap[i]
-    const noise = (Math.random() - 0.5) * 14
-    const val = Math.max(0, Math.min(255, Math.round(185 + ao * 70 + noise)))
-    const idx = i * 4
-    diffuseData[idx + 0] = val
-    diffuseData[idx + 1] = val
-    diffuseData[idx + 2] = val
-    diffuseData[idx + 3] = 255
-  }
-  diffuseCtx.putImageData(diffuseImg, 0, 0)
-
-  // 4. Create Three.js Textures
-  const normalTexture = new THREE.CanvasTexture(normalCanvas)
-  normalTexture.wrapS = THREE.RepeatWrapping
-  normalTexture.wrapT = THREE.RepeatWrapping
-  normalTexture.repeat.set(16, 16)
-
-  const diffuseTexture = new THREE.CanvasTexture(diffuseCanvas)
-  diffuseTexture.wrapS = THREE.RepeatWrapping
-  diffuseTexture.wrapT = THREE.RepeatWrapping
-  diffuseTexture.repeat.set(16, 16)
-
-  return { normalTexture, diffuseTexture }
-}
 
 function onPointerMove(e: PointerEvent) {
   mouseX = (e.clientX / window.innerWidth) * 2 - 1
@@ -541,55 +314,72 @@ function updateResponsiveDimensions(w: number, h: number) {
   renderer.setSize(w, h)
 
   if (w < 640) {
-    // Mobile: centered layout lowered comfortably
-    finalScale = 0.88
-    finalPosX = 0
-    finalPosY = -0.28
-    startScale = 0.74
-    startPosX = 0
-    startPosY = -0.26
-    camera.position.set(0, 0.05, 3.8)
-    camera.lookAt(0, -0.05, 0)
+    // Mobile: centered layout
+    finalScale = 0.42
+    finalPosX = 0.12
+    finalPosY = -0.24
+    finalBaseRotY = 0
+    startScale = 0.38
+    startPosX = 0.12
+    startPosY = -0.20
+    startBaseRotY = 0
+    camera.position.set(0, -0.05, 3.8)
+    camera.lookAt(0, -0.14, 0)
   } else if (w < 900) {
     // Tablet: modest size on right
-    finalScale = 0.96
-    finalPosX = 0.40
-    finalPosY = -0.34
-    startScale = 0.82
-    startPosX = 0
-    startPosY = -0.30
-    camera.position.set(0.06, 0.02, 3.6)
-    camera.lookAt(0.18, -0.05, 0)
+    finalScale = 0.48
+    finalPosX = 0.62
+    finalPosY = -0.28
+    finalBaseRotY = -0.14
+    startScale = 0.44
+    startPosX = 0.22
+    startPosY = -0.24
+    startBaseRotY = -0.08
+    camera.position.set(0.08, -0.07, 3.6)
+    camera.lookAt(0.28, -0.14, 0)
   } else if (w < 1180) {
-    // Laptop: medium size on right
-    finalScale = 1.02
-    finalPosX = 0.50
-    finalPosY = -0.36
-    startScale = 0.88
-    startPosX = 0
-    startPosY = -0.32
-    camera.position.set(0.10, 0.02, 3.5)
-    camera.lookAt(0.25, -0.05, 0)
+    // Laptop: medium size on right, squared up to user
+    finalScale = 0.52
+    finalPosX = 0.92
+    finalPosY = -0.34
+    finalBaseRotY = -0.22
+    startScale = 0.48
+    startPosX = 0.42
+    startPosY = -0.28
+    startBaseRotY = -0.15
+    camera.position.set(0.12, -0.08, 3.5)
+    camera.lookAt(0.42, -0.16, 0)
   } else {
-    // Large desktop: right-aligned hero assistant lowered
-    finalScale = 1.08
-    finalPosX = 0.58
-    finalPosY = -0.36
-    startScale = 0.94
-    startPosX = 0.0
-    startPosY = -0.32
-    camera.position.set(0.12, 0.02, 3.4)
-    camera.lookAt(0.30, -0.05, 0)
+    // Large desktop: right-aligned hero assistant, perfectly facing viewer
+    finalScale = 0.58
+    finalPosX = 1.05
+    finalPosY = -0.34
+    finalBaseRotY = -0.25
+    startScale = 0.54
+    startPosX = 0.52
+    startPosY = -0.28
+    startBaseRotY = -0.18
+    camera.position.set(0.14, -0.08, 3.4)
+    camera.lookAt(0.48, -0.16, 0)
   }
 
   if (!isStarted.value) {
     targetPosX = startPosX
     targetPosY = startPosY
     targetScale = startScale
+    targetBaseRotY = startBaseRotY
   } else {
     targetPosX = finalPosX
     targetPosY = finalPosY
     targetScale = finalScale
+    targetBaseRotY = finalBaseRotY
+  }
+
+  if (!isLoaded.value) {
+    currentPosX = targetPosX
+    currentPosY = targetPosY
+    currentScale = targetScale
+    currentBaseRotY = targetBaseRotY
   }
 }
 
@@ -666,141 +456,7 @@ function updateScreen(elapsed: number, dt: number) {
   screenTexture.needsUpdate = true
 }
 
-function switchMode(mode: ScreenMode) {
-  currentScreenMode = mode
-  screenModeTimer = 0
 
-  if (mode === 'terminal') {
-    termCurrentLine = 0
-    termCharIndex = 0
-    termTimer = 0
-  }
-  if (mode === 'boot') {
-    bootTimer = 0
-  }
-}
-
-function drawStartScreen(
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  elapsed: number,
-  dt: number
-) {
-  // ── Top Header Bar ──
-  ctx.save()
-  ctx.font = 'bold 12px "Courier New", monospace'
-  ctx.textAlign = 'left'
-  ctx.fillStyle = '#00ff88'
-  ctx.shadowColor = '#00ff88'
-  ctx.shadowBlur = 6
-  ctx.fillText('GENLAB OS // STANDBY', 42, 54)
-
-  ctx.font = '11px "Courier New", monospace'
-  ctx.fillStyle = 'rgba(0, 255, 140, 0.45)'
-  ctx.shadowBlur = 2
-  ctx.fillText('> SYSTEM READY: 64MB OK', 42, 74)
-  ctx.fillText('> OPTICAL SENSORS: ONLINE', 42, 92)
-  ctx.restore()
-
-  // ── Center: Bold Glowing [ CLICK TO START ] ──
-  ctx.save()
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-
-  const pulse = Math.sin(elapsed * 3.6) * 0.25 + 0.75
-  const glow = Math.sin(elapsed * 3.6) * 8 + 14
-
-  // Outer prompt container box
-  const boxW = 320
-  const boxH = 54
-  const boxX = (w - boxW) / 2
-  const boxY = h / 2 - 16
-
-  ctx.strokeStyle = `rgba(0, 255, 170, ${(pulse * 0.7).toFixed(2)})`
-  ctx.lineWidth = 1.5
-  ctx.shadowColor = '#00ffaa'
-  ctx.shadowBlur = glow * 0.6
-  ctx.strokeRect(boxX, boxY, boxW, boxH)
-
-  // Inner bold pulsing text
-  ctx.font = 'bold 24px "Courier New", monospace'
-  ctx.fillStyle = `rgba(230, 255, 245, ${pulse.toFixed(2)})`
-  ctx.shadowColor = '#00ffcc'
-  ctx.shadowBlur = glow
-  ctx.fillText('▶ CLICK TO START', w / 2, h / 2 + 11)
-
-  // Sub-prompt below box
-  ctx.font = '11px "Courier New", monospace'
-  ctx.fillStyle = 'rgba(148, 163, 184, 0.6)'
-  ctx.shadowBlur = 0
-  ctx.fillText('• TOUCH OR CLICK TO INITIALIZE •', w / 2, h / 2 + 62)
-
-  ctx.restore()
-}
-
-function drawBootScreen(ctx: CanvasRenderingContext2D, w: number, h: number, dt: number) {
-  bootTimer += dt
-  bootCursorTimer += dt
-
-  if (bootCursorTimer > 0.4) {
-    bootCursorVisible = !bootCursorVisible
-    bootCursorTimer = 0
-  }
-
-  ctx.textAlign = 'center'
-
-  // Header
-  ctx.font = 'bold 30px "Courier New", monospace'
-  ctx.fillStyle = '#00ff88'
-  ctx.shadowColor = '#00ff88'
-  ctx.shadowBlur = 12
-  ctx.fillText('GENLAB OS', w / 2, h / 2 - 45)
-
-  ctx.font = '14px monospace'
-  ctx.fillStyle = '#00bb66'
-  ctx.shadowBlur = 4
-  ctx.fillText('v3.7.1 NEURAL CORE', w / 2, h / 2 - 18)
-
-  // Initializing progress bar
-  if (bootTimer < 3.0) {
-    ctx.font = '13px monospace'
-    ctx.fillStyle = '#00ffaa'
-    ctx.shadowBlur = 6
-    ctx.fillText('INITIALIZING SYSTEM...', w / 2, h / 2 + 25)
-
-    const progress = Math.min(bootTimer / 2.8, 1)
-    const barW = 240
-    const barH = 14
-    const barX = (w - barW) / 2
-    const barY = h / 2 + 45
-
-    ctx.strokeStyle = '#00aa55'
-    ctx.lineWidth = 1.5
-    ctx.strokeRect(barX, barY, barW, barH)
-
-    ctx.fillStyle = '#00ff88'
-    ctx.fillRect(barX + 3, barY + 3, (barW - 6) * progress, barH - 6)
-  } else {
-    ctx.font = '13px monospace'
-    ctx.fillStyle = '#00ffaa'
-    ctx.shadowBlur = 6
-    ctx.fillText('PERSONALITY LOADED', w / 2, h / 2 + 25)
-
-    ctx.font = 'bold 20px monospace'
-    ctx.fillStyle = '#ffffff'
-    ctx.shadowColor = '#00ff88'
-    ctx.shadowBlur = 10
-    ctx.fillText('READY.', w / 2, h / 2 + 58)
-
-    if (bootCursorVisible) {
-      ctx.fillStyle = '#00ff88'
-      ctx.fillRect(w / 2 + 45, h / 2 + 46, 12, 16)
-    }
-  }
-
-  ctx.shadowBlur = 0
-}
 
 function drawEyeScreen(
   ctx: CanvasRenderingContext2D,
@@ -856,7 +512,7 @@ function drawEyeScreen(
         blinkState = 'open'
         blinkTimer = 0
         blinkProgress = 0
-        nextBlinkTime = 2.5 + Math.random() * 3.0
+        nextBlinkTime = BLINK_INTERVAL
       }
       break
   }
@@ -1024,83 +680,7 @@ function drawSingleEye(
   ctx.restore()
 }
 
-function drawTerminalScreen(ctx: CanvasRenderingContext2D, w: number, h: number, dt: number) {
-  termTimer += dt
-  termCursorTimer += dt
 
-  if (termCursorTimer > 0.4) {
-    termCursorVisible = !termCursorVisible
-    termCursorTimer = 0
-  }
-
-  // Typewriter line streaming
-  if (termCurrentLine < TERM_LINES.length) {
-    if (termTimer > 0.035) {
-      termCharIndex++
-      termTimer = 0
-      if (termCharIndex >= TERM_LINES[termCurrentLine].length) {
-        termCurrentLine++
-        termCharIndex = 0
-        termTimer = -0.18
-      }
-    }
-  }
-
-  ctx.font = '13px "Courier New", monospace'
-  ctx.textAlign = 'left'
-
-  const lineH = 22
-  const startX = 36
-  const startY = 48
-
-  for (let i = 0; i <= Math.min(termCurrentLine, TERM_LINES.length - 1); i++) {
-    const line = TERM_LINES[i]
-    let displayText = line
-
-    if (i === termCurrentLine && termCurrentLine < TERM_LINES.length) {
-      displayText = line.substring(0, termCharIndex)
-    }
-
-    if (line.startsWith('>')) {
-      ctx.fillStyle = '#00ff88'
-      ctx.shadowColor = '#00ff88'
-      ctx.shadowBlur = 4
-    } else if (line.startsWith('genlab@')) {
-      ctx.fillStyle = '#38bdf8'
-      ctx.shadowColor = '#38bdf8'
-      ctx.shadowBlur = 4
-    } else if (line.includes('ONLINE') || line.includes('READY')) {
-      ctx.fillStyle = '#4ade80'
-      ctx.shadowColor = '#4ade80'
-      ctx.shadowBlur = 6
-    } else if (line.startsWith('GENLAB')) {
-      ctx.fillStyle = '#ffffff'
-      ctx.shadowColor = '#ffffff'
-      ctx.shadowBlur = 8
-    } else {
-      ctx.fillStyle = '#94a3b8'
-      ctx.shadowBlur = 0
-    }
-
-    ctx.fillText(displayText, startX, startY + i * lineH)
-  }
-
-  // Blinking block cursor
-  if (termCursorVisible) {
-    const cursorLine = Math.min(termCurrentLine, TERM_LINES.length - 1)
-    const cursorText =
-      termCurrentLine < TERM_LINES.length
-        ? TERM_LINES[cursorLine].substring(0, termCharIndex)
-        : TERM_LINES[TERM_LINES.length - 1]
-    const textWidth = ctx.measureText(cursorText).width
-    ctx.fillStyle = '#00ff88'
-    ctx.shadowColor = '#00ff88'
-    ctx.shadowBlur = 6
-    ctx.fillRect(startX + textWidth + 2, startY + cursorLine * lineH - 12, 8, 15)
-  }
-
-  ctx.shadowBlur = 0
-}
 
 function drawGlitch(ctx: CanvasRenderingContext2D, w: number, h: number) {
   // Horizontal displacement slices
@@ -1173,25 +753,26 @@ function animate() {
 
   if (!renderer || !scene || !camera) return
 
-  const elapsed = clock.getElapsedTime()
-  const dt = Math.min(clock.getDelta(), 0.05)
+  const rawDt = clock.getDelta() // must come first
+  const elapsed = clock.elapsedTime // property, doesn't consume delta
+  const dt = Math.min(rawDt, 0.05)
 
   // Update CRT screen texture
   updateScreen(elapsed, dt)
 
-  if (!tvHeadPivot || !staticBody) {
+  if (!shabdamModel) {
     renderer.render(scene, camera)
     return
   }
 
   // ── Mouse Targets (responsive cursor tracking across neck and TV head) ──
   const motionScale = prefersReducedMotion ? 0.03 : 1
-  targetRotY = mouseX * 0.32 * motionScale // ±18.3 degrees for expressive tracking
-  targetRotX = mouseY * 0.20 * motionScale // ±11.5 degrees
+  targetRotY = mouseX * 0.28 * motionScale // horizontal rotation
+  targetRotX = mouseY * 0.18 * motionScale // vertical nod
 
-  // ── Snappy Damped Physical Rotation (Faster response, zero sluggishness) ──
-  currentRotX += (targetRotX - currentRotX) * 0.15
-  currentRotY += (targetRotY - currentRotY) * 0.15
+  // ── Snappy Damped Physical Rotation ──
+  currentRotX += (targetRotX - currentRotX) * 0.14
+  currentRotY += (targetRotY - currentRotY) * 0.14
 
   // ── Subtle Natural Idle Motion ──
   let idleBodyY = 0
@@ -1201,22 +782,27 @@ function animate() {
     idleHeadRotZ = Math.sin(elapsed * 0.55 + 0.4) * 0.004
   }
 
-  // 1. TV Head pivots smoothly inside the sweater collar socket
-  tvHeadPivot.rotation.x = currentRotX
-  tvHeadPivot.rotation.y = currentRotY
-  tvHeadPivot.rotation.z = idleHeadRotZ
-  tvHeadPivot.position.y = (SPLIT_Y - MODEL_CENTER_Y) + idleBodyY
+  // 1. Skinned TV Head & Neck tracking
+  if (headBone && initialHeadRot) {
+    headBone.rotation.x = initialHeadRot.x + currentRotX * 0.75
+    headBone.rotation.y = initialHeadRot.y + currentRotY * 0.85
+    headBone.rotation.z = initialHeadRot.z - currentRotY * 0.12 + idleHeadRotZ
+  }
 
-  // 2. Static Body (Torso / Sweater) remains stable at shoulders with breathing motion
-  staticBody.position.y = -MODEL_CENTER_Y + idleBodyY
+  if (neck2Bone && initialNeck2Rot) {
+    neck2Bone.rotation.x = initialNeck2Rot.x + currentRotX * 0.20
+    neck2Bone.rotation.y = initialNeck2Rot.y + currentRotY * 0.25
+  }
 
-  // 4. Smooth Position & Scale Animation (Center -> Right Transition on Click)
+  // 2. Smooth Position & Scale Animation (Center -> Right Transition on Click)
   currentPosX += (targetPosX - currentPosX) * 0.055
   currentPosY += (targetPosY - currentPosY) * 0.055
   currentScale += (targetScale - currentScale) * 0.055
+  currentBaseRotY += (targetBaseRotY - currentBaseRotY) * 0.055
 
   if (characterGroup) {
-    characterGroup.position.set(currentPosX, currentPosY, basePosZ)
+    characterGroup.position.set(currentPosX, currentPosY + idleBodyY, basePosZ)
+    characterGroup.rotation.y = currentBaseRotY + currentRotY * 0.10
     characterGroup.scale.setScalar(currentScale)
   }
 
