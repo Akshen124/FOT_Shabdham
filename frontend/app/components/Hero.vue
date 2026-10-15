@@ -47,7 +47,7 @@
           />
         </div>
 
-        <div v-if="isThinking" class="hero__thinking">⏳ Thinking...</div>
+        <div v-if="isThinking" class="hero__thinking"> Thinking...</div>
         <div v-if="error" class="hero__error">{{ error }}</div>
       </div>
 
@@ -66,7 +66,7 @@
           <button v-if="!isThinking" class="hero__send" type="submit" :disabled="!input.trim()" aria-label="Send message">Send</button>
           <button v-if="isThinking" class="hero__stop" type="button" @click="stopProcessing" aria-label="Stop generation">
             <!-- Simple stop square icon -->
-            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" fill="currentColor"/></svg>
+            
             Stop
           </button>
 
