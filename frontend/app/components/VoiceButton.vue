@@ -43,7 +43,6 @@ const emit = defineEmits<{
 }>()
 
 
-
 const label = computed(() => {
   if (props.error) return 'Try again'
   if (props.listening) return 'Listening...'
