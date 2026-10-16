@@ -26,11 +26,11 @@ html {
 }
 
 :root {
-  --primary: #2373F4;
-  --primary-hover: #1b63d7;
-  --primary-light: rgba(35, 115, 244, 0.08);
-  --primary-glow: rgba(35, 115, 244, 0.25);
-  --bg-white: #ffffff;
+  --primary: #5B325B;
+  --primary-hover: #482448;
+  --primary-light: rgba(91, 50, 91, 0.08);
+  --primary-glow: rgba(91, 50, 91, 0.25);
+  --bg-white: rgb(251, 171, 0);
   --text-dark: #0f172a;
   --text-muted: #64748b;
 }
@@ -45,7 +45,7 @@ body {
 }
 
 ::selection {
-  background: #2373F4;
+  background: #5B325B;
   color: #ffffff;
 }
 

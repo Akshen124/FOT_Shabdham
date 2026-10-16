@@ -232,14 +232,7 @@ function toggleVoiceInput() {
 .hero__bg {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(
-      ellipse 85% 75% at 65% 44%,
-      #ffffff 0%,
-      #f4f8fe 42%,
-      #eaf1fd 78%,
-      #dde8fb 100%
-    );
+  background: #e9e1a5ff;
   z-index: 0;
 }
 
@@ -306,10 +299,10 @@ function toggleVoiceInput() {
   line-height: 1.2;
   letter-spacing: -0.02em;
   color: #0f172a;
-  background: linear-gradient(135deg, #0f172a 35%, #2373F4 100%);
+  background: linear-gradient(135deg, #0f172a 35%, #5B325B 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 14px rgba(35, 115, 244, 0.26));
+  filter: drop-shadow(0 0 14px rgba(91, 50, 91, 0.26));
   user-select: none;
 }
 
@@ -329,14 +322,14 @@ function toggleVoiceInput() {
 
 .hero__heading-line--cyber::before {
   left: -2px;
-  text-shadow: 2px 0 rgba(35, 115, 244, 0.65);
+  text-shadow: 2px 0 rgba(91, 50, 91, 0.65);
   clip-path: inset(20% 0 50% 0);
   animation: cyber-glitch-slice-1 3.8s infinite linear alternate-reverse;
 }
 
 .hero__heading-line--cyber::after {
   left: 2px;
-  text-shadow: -2px 0 rgba(96, 165, 250, 0.65);
+  text-shadow: -2px 0 rgba(168, 110, 168, 0.65);
   clip-path: inset(55% 0 15% 0);
   animation: cyber-glitch-slice-2 3.1s infinite linear alternate-reverse;
 }
@@ -345,9 +338,9 @@ function toggleVoiceInput() {
   display: inline-block;
   margin-left: 2px;
   font-weight: 800;
-  color: #2373F4;
-  -webkit-text-fill-color: #2373F4;
-  text-shadow: 0 0 10px rgba(35, 115, 244, 0.85);
+  color: #5B325B;
+  -webkit-text-fill-color: #5B325B;
+  text-shadow: 0 0 10px rgba(91, 50, 91, 0.85);
   animation: cyber-cursor-blink 0.9s step-start infinite;
 }
 
@@ -411,7 +404,7 @@ function toggleVoiceInput() {
 .hero__heading-line--italic {
   font-style: italic;
   font-weight: 500;
-  color: #2373F4;
+  color: #5B325B;
   margin-top: 0.15em;
 }
 
@@ -448,7 +441,7 @@ function toggleVoiceInput() {
 }
 
 .hero__thinking {
-  color: #2373F4;
+  color: #5B325B;
   font-weight: 500;
 }
 
@@ -476,7 +469,7 @@ function toggleVoiceInput() {
 .hero__input {
   flex: 1;
   min-width: 0;
-  border: 1px solid rgba(35, 115, 244, 0.2);
+  border: 1px solid rgba(91, 50, 91, 0.2);
   background: rgba(255, 255, 255, 0.85);
   color: #0f172a;
   border-radius: 999px;
@@ -485,32 +478,32 @@ function toggleVoiceInput() {
   outline: none;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 2px 10px rgba(35, 115, 244, 0.04);
+  box-shadow: 0 2px 10px rgba(91, 50, 91, 0.04);
   transition: all 0.25s ease;
 }
 
 .hero__input:focus {
-  border-color: #2373F4;
-  box-shadow: 0 0 0 3px rgba(35, 115, 244, 0.18);
+  border-color: #5B325B;
+  box-shadow: 0 0 0 3px rgba(91, 50, 91, 0.18);
   background: #ffffff;
 }
 
 .hero__send {
   border-radius: 999px;
-  border: 1px solid #2373F4;
-  background: #2373F4;
+  border: 1px solid #5B325B;
+  background: #5B325B;
   color: #fff;
   padding: 0.9rem 1.4rem;
   font-size: 0.85rem;
   font-weight: 500;
-  box-shadow: 0 4px 14px rgba(35, 115, 244, 0.3);
+  box-shadow: 0 4px 14px rgba(91, 50, 91, 0.3);
   transition: all 0.2s ease;
 }
 
 .hero__send:hover:not(:disabled) {
-  background: #1b63d7;
-  border-color: #1b63d7;
-  box-shadow: 0 6px 18px rgba(35, 115, 244, 0.4);
+  background: #482448;
+  border-color: #482448;
+  box-shadow: 0 6px 18px rgba(91, 50, 91, 0.4);
   transform: translateY(-1px);
 }
 
@@ -560,7 +553,7 @@ function toggleVoiceInput() {
   margin-bottom: 1rem;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-color: rgba(35, 115, 244, 0.3) transparent;
+  scrollbar-color: rgba(91, 50, 91, 0.3) transparent;
   scrollbar-width: thin;
 }
 
@@ -607,9 +600,9 @@ function toggleVoiceInput() {
 .hero__loader-dot {
   width: 7px;
   height: 7px;
-  background: #2373F4;
+  background: #5B325B;
   border-radius: 50%;
-  box-shadow: 0 0 10px rgba(35, 115, 244, 0.6);
+  box-shadow: 0 0 10px rgba(91, 50, 91, 0.6);
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
 

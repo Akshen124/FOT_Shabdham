@@ -206,10 +206,10 @@ onMounted(async () => {
     const raycasterMesh = shabdamModel.getObjectByName('Raycaster')
     if (raycasterMesh) raycasterMesh.visible = false
 
-    // Tint shirt/sweater to rich dark blue while keeping original 4K fabric scan
+    // Tint shirt/sweater to #341139 while keeping original 4K fabric scan
     const bodyMesh = shabdamModel.getObjectByName('BodyHP')
     if (bodyMesh && bodyMesh.material) {
-      bodyMesh.material.color = new THREE.Color(0x0d235c)
+      bodyMesh.material.color = new THREE.Color('#341139')
       bodyMesh.material.roughness = 0.95
       bodyMesh.material.metalness = 0.0
     }

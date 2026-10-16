@@ -109,10 +109,10 @@ onUnmounted(() => {
 }
 
 .chat-message--user .chat-message__bubble {
-  background: #2373F4;
+  background: #5B325B;
   color: #ffffff;
   border-radius: 1.25rem 1.25rem 0.25rem 1.25rem;
-  box-shadow: 0 4px 14px rgba(35, 115, 244, 0.28);
+  box-shadow: 0 4px 14px rgba(91, 50, 91, 0.28);
 }
 
 .chat-message__label {
@@ -126,7 +126,7 @@ onUnmounted(() => {
 }
 
 .chat-message--assistant .chat-message__label {
-  color: #2373F4;
+  color: #5B325B;
 }
 
 .chat-message__bubble p {
@@ -147,7 +147,7 @@ onUnmounted(() => {
 .caret {
   display: inline-block;
   width: 2px;
-  background: #2373F4;
+  background: #5B325B;
   animation: blink 1s steps(2, start) infinite;
   margin-left: 3px;
 }

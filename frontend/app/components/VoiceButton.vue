@@ -73,18 +73,18 @@ const ariaLabel = computed(() => {
   border-radius: 999px;
   padding: 0.75rem 1.25rem;
   background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(35, 115, 244, 0.2);
+  border: 1px solid rgba(91, 50, 91, 0.2);
   color: #0f172a;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 10px 25px rgba(35, 115, 244, 0.08);
+  box-shadow: 0 10px 25px rgba(91, 50, 91, 0.08);
   transition: all 0.2s ease;
 }
 
 .voice-button:hover:not(:disabled) {
   transform: translateY(-1px);
-  border-color: #2373F4;
-  box-shadow: 0 14px 30px rgba(35, 115, 244, 0.16);
+  border-color: #5B325B;
+  box-shadow: 0 14px 30px rgba(91, 50, 91, 0.16);
 }
 
 .voice-button:active:not(:disabled) {
@@ -92,23 +92,23 @@ const ariaLabel = computed(() => {
 }
 
 .voice-button:focus-visible {
-  outline: 2px solid #2373F4;
+  outline: 2px solid #5B325B;
   outline-offset: 2px;
 }
 
 .voice-button--listening {
   background: rgba(255, 255, 255, 0.95);
-  border-color: #2373F4;
-  box-shadow: 0 0 0 0 rgba(35, 115, 244, 0.4);
+  border-color: #5B325B;
+  box-shadow: 0 0 0 0 rgba(91, 50, 91, 0.4);
   animation: pulse 1.4s ease-out infinite;
 }
 
 .voice-button--processing,
 .voice-button--speaking {
-  background: #2373F4;
-  border-color: #2373F4;
+  background: #5B325B;
+  border-color: #5B325B;
   color: #ffffff;
-  box-shadow: 0 8px 24px rgba(35, 115, 244, 0.35);
+  box-shadow: 0 8px 24px rgba(91, 50, 91, 0.35);
 }
 
 .voice-button--error {
@@ -134,13 +134,13 @@ const ariaLabel = computed(() => {
 
 @keyframes pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(35, 115, 244, 0.4);
+    box-shadow: 0 0 0 0 rgba(91, 50, 91, 0.4);
   }
   70% {
-    box-shadow: 0 0 0 10px rgba(35, 115, 244, 0);
+    box-shadow: 0 0 0 10px rgba(91, 50, 91, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(35, 115, 244, 0);
+    box-shadow: 0 0 0 0 rgba(91, 50, 91, 0);
   }
 }
 </style>

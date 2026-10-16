@@ -103,7 +103,7 @@ const mobileOpen = ref(false)
   font-size: 0.65em;
   vertical-align: super;
   margin-left: 1px;
-  color: #2373F4;
+  color: #5B325B;
   opacity: 1;
 }
 
@@ -129,13 +129,13 @@ const mobileOpen = ref(false)
   left: 0;
   width: 0;
   height: 2px;
-  background: #2373F4;
+  background: #5B325B;
   border-radius: 2px;
   transition: width 0.3s ease;
 }
 
 .nav__link:hover {
-  color: #2373F4;
+  color: #5B325B;
 }
 
 .nav__link:hover::after {
@@ -146,20 +146,20 @@ const mobileOpen = ref(false)
 .nav__cta {
   font-size: 0.875rem;
   font-weight: 500;
-  color: #2373F4;
+  color: #5B325B;
   padding: 0.5rem 1.25rem;
-  border: 1px solid rgba(35, 115, 244, 0.35);
+  border: 1px solid rgba(91, 50, 91, 0.35);
   background: rgba(255, 255, 255, 0.85);
   border-radius: 100px;
-  box-shadow: 0 2px 8px rgba(35, 115, 244, 0.08);
+  box-shadow: 0 2px 8px rgba(91, 50, 91, 0.08);
   transition: all 0.3s ease;
 }
 
 .nav__cta:hover {
-  background: #2373F4;
+  background: #5B325B;
   color: #ffffff;
-  border-color: #2373F4;
-  box-shadow: 0 4px 16px rgba(35, 115, 244, 0.32);
+  border-color: #5B325B;
+  box-shadow: 0 4px 16px rgba(91, 50, 91, 0.32);
 }
 
 /* Burger */
@@ -175,7 +175,7 @@ const mobileOpen = ref(false)
   display: block;
   width: 100%;
   height: 1.5px;
-  background: #2373F4;
+  background: #5B325B;
   transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   transform-origin: center;
 }
@@ -195,7 +195,7 @@ const mobileOpen = ref(false)
   left: 0;
   width: 100%;
   background: rgba(255, 255, 255, 0.96);
-  border-bottom: 1px solid rgba(35, 115, 244, 0.12);
+  border-bottom: 1px solid rgba(91, 50, 91, 0.12);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   padding: 2rem clamp(1.5rem, 4vw, 3.5rem) 3rem;
@@ -213,7 +213,7 @@ const mobileOpen = ref(false)
 }
 
 .nav__mobile-link:hover {
-  color: #2373F4;
+  color: #5B325B;
   opacity: 1;
 }
 
@@ -223,17 +223,17 @@ const mobileOpen = ref(false)
   font-size: 0.875rem;
   font-weight: 500;
   color: #ffffff;
-  background: #2373F4;
+  background: #5B325B;
   padding: 0.75rem 1.5rem;
   border-radius: 100px;
   text-align: center;
-  box-shadow: 0 4px 14px rgba(35, 115, 244, 0.3);
+  box-shadow: 0 4px 14px rgba(91, 50, 91, 0.3);
   transition: all 0.3s ease;
 }
 
 .nav__mobile-cta:hover {
-  background: #1b63d7;
-  box-shadow: 0 6px 18px rgba(35, 115, 244, 0.4);
+  background: #482448;
+  box-shadow: 0 6px 18px rgba(91, 50, 91, 0.4);
 }
 
 /* Transition */
