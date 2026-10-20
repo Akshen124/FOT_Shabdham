@@ -28,7 +28,7 @@
       </p>
 
       <h1 class="hero__heading font-display">
-        <span class="hero__heading-line hero__heading-line--cyber" data-text="A legend enters the chat.">
+        <span class="hero__heading-line hero__heading-line--cyber" data-text="Hey, I'm Shabdam. Let's make some magic!">
           Hey, I’m Shabdam. Let’s make some magic!<span class="hero__cyber-cursor" aria-hidden="true">_</span>
         </span>
       </h1>
@@ -232,7 +232,7 @@ function toggleVoiceInput() {
 .hero__bg {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to right, #fab522, #f59e0b, #ea580c);
+  background: #ffffff;
   z-index: 0;
 }
 
@@ -278,6 +278,7 @@ function toggleVoiceInput() {
 }
 
 .hero__heading {
+  font-family: 'Share Tech Mono', monospace;
   font-size: clamp(2rem, 4.5vw, 3.5rem);
   font-weight: 600;
   line-height: 1.15;
@@ -293,7 +294,7 @@ function toggleVoiceInput() {
 .hero__heading-line--cyber {
   display: inline-block;
   position: relative;
-  font-family: 'Space Mono', 'Courier New', 'SF Mono', Menlo, Consolas, monospace;
+  font-family: 'Orbitron', sans-serif;
   font-size: clamp(1.75rem, 3.8vw, 3.1rem);
   font-weight: 700;
   line-height: 1.2;

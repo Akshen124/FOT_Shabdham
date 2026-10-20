@@ -30,7 +30,7 @@ html {
   --primary-hover: #482448;
   --primary-light: rgba(91, 50, 91, 0.08);
   --primary-glow: rgba(91, 50, 91, 0.25);
-  --bg-white: rgb(251, 171, 0);
+  --bg-white: #ffffff;
   --text-dark: #0f172a;
   --text-muted: #64748b;
 }
