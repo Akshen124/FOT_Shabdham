@@ -211,19 +211,70 @@ onMounted(async () => {
     if (bodyMesh && bodyMesh.material) {
       bodyMesh.material.color = new THREE.Color('#341139')
       bodyMesh.material.roughness = 0.95
-      bodyMesh.material.metalness = 0.0
+      bodyMesh.material.metalness = 0.75
     }
 
-    // Enhance studio reflections on TV casing and materials
+    // Tint robot TV head cabinet to yellowish orange light shade
+    const applyHeadFinish = (mat: any) => {
+      if (!mat) return
+      mat.color = new THREE.Color(0xFFA834) // yellowish orange light shade
+      mat.roughness = 0.58 // natural satin finish
+      mat.metalness = 0.0
+      mat.needsUpdate = true
+    }
+
+    const tvCasing = shabdamModel.getObjectByName('Cube001') || shabdamModel.getObjectByName('Cube.001')
+    if (tvCasing && tvCasing.material) {
+      if (Array.isArray(tvCasing.material)) {
+        tvCasing.material.forEach(applyHeadFinish)
+      } else {
+        applyHeadFinish(tvCasing.material)
+      }
+    }
+
+    // Configure head light indicator with yellowish orange emissive glow
+    const headLights = shabdamModel.getObjectByName('lights')
+    if (headLights && headLights.material) {
+      headLights.material.color = new THREE.Color(0xFFA834)
+      headLights.material.emissive = new THREE.Color(0xFFA834)
+      headLights.material.emissiveIntensity = 0.9
+      headLights.material.needsUpdate = true
+    }
+
+    const headLightsGlow = shabdamModel.getObjectByName('Lights glow')
+    if (headLightsGlow && headLightsGlow.material) {
+      headLightsGlow.material.color = new THREE.Color(0xFFA834)
+      headLightsGlow.material.emissive = new THREE.Color(0xFFA834)
+      headLightsGlow.material.emissiveIntensity = 0.6
+      headLightsGlow.material.needsUpdate = true
+    }
+
+    // Enhance studio reflections on materials (calibrated for head casing)
     shabdamModel.traverse((child: any) => {
       if (child.isMesh) {
         child.castShadow = false
         child.receiveShadow = false
         if (child.material) {
+          const isHeadCasing =
+            child.name === 'Cube001' ||
+            child.name === 'Cube.001' ||
+            (Array.isArray(child.material)
+              ? child.material.some((m: any) => m.name === 'light_grey')
+              : child.material.name === 'light_grey')
+
+          if (isHeadCasing) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(applyHeadFinish)
+            } else {
+              applyHeadFinish(child.material)
+            }
+          }
+
+          const envIntensity = isHeadCasing ? 0.65 : 1.0
           if (Array.isArray(child.material)) {
-            child.material.forEach((m: any) => { m.envMapIntensity = 1.0 })
+            child.material.forEach((m: any) => { m.envMapIntensity = envIntensity })
           } else {
-            child.material.envMapIntensity = 1.0
+            child.material.envMapIntensity = envIntensity
           }
         }
       }
@@ -571,7 +622,7 @@ function drawSingleEye(
   const cx = eyeX + pupilX * 0.35
   const cy = eyeY + pupilY * 0.35
 
-  // 1. Ambient Outer Halo Bloom (Luminous electric cyan diffuse emission)
+  // 1. Ambient Outer Halo Bloom (Luminous warm yellowish-orange diffuse emission)
   ctx.save()
   ctx.translate(cx, cy)
   ctx.scale(1 / 1.125, 1)
@@ -585,9 +636,9 @@ function drawSingleEye(
     cy,
     eyeRadius * 2.4
   )
-  outerBloom.addColorStop(0, 'rgba(186, 230, 253, 0.48)') // Bright sky blue
-  outerBloom.addColorStop(0.30, 'rgba(56, 189, 248, 0.26)') // Electric cyan
-  outerBloom.addColorStop(0.65, 'rgba(14, 116, 144, 0.08)')
+  outerBloom.addColorStop(0, 'rgba(255, 214, 138, 0.50)') // Bright warm golden amber
+  outerBloom.addColorStop(0.30, 'rgba(255, 168, 52, 0.32)') // #FFA834 yellowish orange
+  outerBloom.addColorStop(0.65, 'rgba(217, 119, 6, 0.10)')
   outerBloom.addColorStop(1, 'rgba(0, 0, 0, 0)')
   ctx.fillStyle = outerBloom
   ctx.beginPath()
@@ -611,16 +662,16 @@ function drawSingleEye(
     eyeRadius * 1.10
   )
   chromaticEdge.addColorStop(0, 'rgba(255, 255, 255, 0)')
-  chromaticEdge.addColorStop(0.48, 'rgba(245, 158, 11, 0.42)') // Warm golden-amber
-  chromaticEdge.addColorStop(0.82, 'rgba(234, 88, 12, 0.28)') // Soft sunset orange
+  chromaticEdge.addColorStop(0.48, 'rgba(255, 168, 52, 0.55)') // Yellowish orange
+  chromaticEdge.addColorStop(0.82, 'rgba(234, 88, 12, 0.35)') // Warm deep orange
   chromaticEdge.addColorStop(1, 'rgba(0, 0, 0, 0)')
   ctx.fillStyle = chromaticEdge
   ctx.beginPath()
   ctx.arc(cx, cy, eyeRadius * 1.10, 0, Math.PI * 2)
   ctx.fill()
 
-  // Cyan Electric Rim
-  const cyanEdge = ctx.createRadialGradient(
+  // Inner Yellowish-Orange Vibrant Rim
+  const orangeRim = ctx.createRadialGradient(
     cx,
     cy,
     eyeRadius * 0.65,
@@ -628,16 +679,16 @@ function drawSingleEye(
     cy,
     eyeRadius * 1.02
   )
-  cyanEdge.addColorStop(0, 'rgba(255, 255, 255, 0)')
-  cyanEdge.addColorStop(0.55, 'rgba(56, 189, 248, 0.60)') // Electric cyan rim
-  cyanEdge.addColorStop(0.88, 'rgba(2, 132, 199, 0.32)')
-  cyanEdge.addColorStop(1, 'rgba(0, 0, 0, 0)')
-  ctx.fillStyle = cyanEdge
+  orangeRim.addColorStop(0, 'rgba(255, 255, 255, 0)')
+  orangeRim.addColorStop(0.55, 'rgba(255, 184, 77, 0.65)') // Vibrant light yellowish orange
+  orangeRim.addColorStop(0.88, 'rgba(245, 158, 11, 0.36)')
+  orangeRim.addColorStop(1, 'rgba(0, 0, 0, 0)')
+  ctx.fillStyle = orangeRim
   ctx.beginPath()
   ctx.arc(cx, cy, eyeRadius * 1.02, 0, Math.PI * 2)
   ctx.fill()
 
-  // Core Luminous White-Hot Light Orb
+  // Core Luminous White-Hot Light Orb with Yellowish Orange Aura
   const coreGrad = ctx.createRadialGradient(
     cx,
     cy,
@@ -647,12 +698,12 @@ function drawSingleEye(
     eyeRadius * 0.94
   )
   coreGrad.addColorStop(0, '#ffffff')
-  coreGrad.addColorStop(0.60, '#ffffff')
-  coreGrad.addColorStop(0.80, '#fefbf3') // Warm creamy white
-  coreGrad.addColorStop(0.92, '#bae6fd') // Soft cyan transition
-  coreGrad.addColorStop(1, 'rgba(125, 211, 252, 0.45)')
+  coreGrad.addColorStop(0.55, '#fffef8')
+  coreGrad.addColorStop(0.78, '#ffe7ba') // Soft golden yellow
+  coreGrad.addColorStop(0.92, '#ffa834') // Yellowish orange (#FFA834)
+  coreGrad.addColorStop(1, 'rgba(255, 168, 52, 0.50)')
 
-  ctx.shadowColor = '#bae6fd'
+  ctx.shadowColor = '#ffa834'
   ctx.shadowBlur = 28
   ctx.fillStyle = coreGrad
   ctx.beginPath()
@@ -660,7 +711,7 @@ function drawSingleEye(
   ctx.fill()
   ctx.shadowBlur = 0
 
-  // High-intensity white center hot spot
+  // High-intensity warm white center hot spot
   const hotSpot = ctx.createRadialGradient(
     cx,
     cy,
@@ -670,8 +721,8 @@ function drawSingleEye(
     eyeRadius * 0.50
   )
   hotSpot.addColorStop(0, '#ffffff')
-  hotSpot.addColorStop(0.75, 'rgba(255, 255, 255, 0.98)')
-  hotSpot.addColorStop(1, 'rgba(255, 255, 255, 0)')
+  hotSpot.addColorStop(0.75, 'rgba(255, 255, 245, 0.98)')
+  hotSpot.addColorStop(1, 'rgba(255, 214, 138, 0)')
   ctx.fillStyle = hotSpot
   ctx.beginPath()
   ctx.arc(cx, cy, eyeRadius * 0.50, 0, Math.PI * 2)

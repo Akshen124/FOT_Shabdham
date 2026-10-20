@@ -232,7 +232,7 @@ function toggleVoiceInput() {
 .hero__bg {
   position: absolute;
   inset: 0;
-  background: #e9e1a5ff;
+  background: linear-gradient(to right, #fab522, #f59e0b, #ea580c);
   z-index: 0;
 }
 
