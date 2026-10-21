@@ -7,7 +7,20 @@ from datetime import datetime
 from typing import Callable
 from zoneinfo import ZoneInfo
 
-from .rag import NOT_AVAILABLE_ANSWER, build_context, generate_answer, rag_debug_log, _FOUNDER_QUESTION
+from .rag import (
+    NOT_AVAILABLE_ANSWER,
+    UNRELATED_REFUSAL_ANSWER,
+    build_context,
+    expand_query_for_retrieval,
+    generate_answer,
+    generate_kb_discovery_answer,
+    get_similarity_threshold,
+    has_domain_affinity,
+    is_basic_conversation,
+    is_kb_discovery,
+    is_unrelated_factual_or_math,
+    rag_debug_log,
+)
 
 
 SYSTEM_PROMPT = """You are a helpful assistant. Use the knowledge-base search for questions about the user's documents. Use the calculator for arithmetic and the current-time tool for date or time questions. For time questions, use UTC unless the user gives a location or timezone. Do not expose internal retrieval details in user-facing answers."""
@@ -138,72 +151,72 @@ def run_agent(
             if message.get("role") == "user"
         ),
         "",
+    ).strip()
+    rag_debug_log(f"Incoming user question: {original_query}")
+
+    # Stage 1: Fast Intent Classification (No unnecessary retrieval or LLM calls)
+    # 1.1 Conversational greetings and acknowledgments
+    is_conv, conv_reply = is_basic_conversation(original_query)
+    if is_conv and conv_reply:
+        rag_debug_log(f"Stage 1 basic conversation: {conv_reply}")
+        return conv_reply
+
+    # 1.2 Knowledge base discovery requests
+    if is_kb_discovery(original_query):
+        rag_debug_log("Stage 1 knowledge base discovery request.")
+        if knowledge_base is None:
+            return "The knowledge base is currently unavailable."
+        overview_context = knowledge_base.get_knowledge_base_overview()
+        return generate_kb_discovery_answer(client, model, overview_context)
+
+    # 1.3 Arithmetic / explicit out-of-scope math
+    if is_unrelated_factual_or_math(original_query):
+        rag_debug_log("Stage 1 unrelated math/calculation detected -> Refusing.")
+        return UNRELATED_REFUSAL_ANSWER
+
+    # Stage 2: Knowledge Base Retrieval & Relevance Evaluation
+    if knowledge_base is None:
+        return NOT_AVAILABLE_ANSWER
+
+    # 2.1 Query normalization and expansion for short / entity queries
+    expanded_query = expand_query_for_retrieval(original_query)
+    rag_debug_log(
+        f"Stage 2 query normalization/expansion: '{original_query}' -> '{expanded_query}'"
     )
-    rag_debug_log(f"Original user question: {original_query}")
-    conversation = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        *messages[-20:],
+
+    # 2.2 Retrieve multiple relevant chunks with deduplication
+    queries = [original_query]
+    if expanded_query != original_query:
+        queries.append(expanded_query)
+
+    documents = knowledge_base.retrieve_multi_query(queries, limit=top_k)
+
+    # 2.3 Evaluate relevance score using Qdrant distance metric semantics
+    threshold = get_similarity_threshold()
+    max_score = max(
+        (d["score"] for d in documents if d.get("score") is not None),
+        default=0.0,
+    )
+    has_domain = has_domain_affinity(original_query)
+    rag_debug_log(
+        f"Stage 2 relevance check: max_score={max_score:.4f}, threshold={threshold}, has_domain={has_domain}"
+    )
+
+    # Reject unrelated questions when sufficient relevant evidence is unavailable
+    if (not documents or max_score < threshold) and not has_domain:
+        rag_debug_log("Stage 2 low relevance and no domain affinity -> Refusing.")
+        return UNRELATED_REFUSAL_ANSWER
+
+    context = build_context(documents)
+    if not context.strip():
+        return NOT_AVAILABLE_ANSWER
+
+    # 2.4 Grounded answer generation using only retrieved context
+    history = [
+        message
+        for message in messages[:-1]
+        if message.get("role") in {"user", "assistant"}
     ]
-
-    for _ in range(MAX_TOOL_ROUNDS):
-        t_llm = time.perf_counter()
-        response = client.chat.completions.create(
-            model=model,
-            messages=conversation,
-            tools=TOOLS,
-            tool_choice="auto",
-            temperature=0.2,
-        )
-        llm_ms = (time.perf_counter() - t_llm) * 1000
-        rag_debug_log(f"[AGENT-TIMING] Tool decision LLM call round {_ + 1}: {llm_ms:.1f}ms")
-        assistant_message = response.choices[0].message
-        if not assistant_message.tool_calls:
-            rag_debug_log("LLM requested knowledge-base retrieval: False")
-            return assistant_message.content or "I couldn't generate a response."
-
-        rag_debug_log(
-            "LLM requested tools: "
-            + ", ".join(tool_call.function.name for tool_call in assistant_message.tool_calls)
-        )
-        conversation.append(assistant_message.model_dump(exclude_none=True))
-        for tool_call in assistant_message.tool_calls:
-            name = tool_call.function.name
-            arguments = {}
-            try:
-                arguments = json.loads(tool_call.function.arguments or "{}")
-                if name == "search_knowledge_base":
-                    if knowledge_base is None:
-                        return NOT_AVAILABLE_ANSWER
-                    # Expand founder queries to include the organization name for better retrieval
-                    retrieval_query = original_query
-                    if _FOUNDER_QUESTION.search(original_query):
-                        retrieval_query = f"{original_query} GenLab"
-                    rag_debug_log(f"Exact query passed to Qdrant retriever (after possible expansion): {retrieval_query}")
-                    documents = knowledge_base.retrieve_documents(
-                        retrieval_query, limit=top_k
-                    )
-                    context = build_context(documents)
-                    if not context:
-                        return NOT_AVAILABLE_ANSWER
-                    history = [
-                        message
-                        for message in messages[:-1]
-                        if message.get("role") in {"user", "assistant"}
-                    ]
-                    return generate_answer(
-                        client, model, original_query, context, history=history
-                    )
-                result = execute_tool(name, arguments, knowledge_base)
-            except (ArithmeticError, KeyError, SyntaxError, TypeError, ValueError) as error:
-                result = f"Tool error: {error}"
-            if on_tool:
-                on_tool(name, arguments, result)
-            conversation.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": result,
-                }
-            )
-
-    return "I reached the tool-call limit before finishing. Please try a simpler request."
+    return generate_answer(
+        client, model, original_query, context, history=history
+    )
