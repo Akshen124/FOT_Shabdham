@@ -43,6 +43,14 @@ const emit = defineEmits<{
 }>()
 
 
+const icon = computed(() => {
+  if (props.error) return ''
+  if (props.listening) return ''
+  if (props.processing) return ''
+  if (props.speaking) return ''
+  return ''
+})
+
 const label = computed(() => {
   if (props.error) return 'Try again'
   if (props.listening) return 'Listening...'

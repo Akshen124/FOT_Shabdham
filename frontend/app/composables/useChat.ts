@@ -18,7 +18,7 @@ export function useChat() {
   const ttsWarning = ref<string | null>(null)
   const transcript = ref('')
   const messageId = ref(0)
-  const apiBase = useRuntimeConfig().public.apiBase
+  const apiBase = (useRuntimeConfig().public.apiBase as string) || ''
   const sessionId = useState<string>('chat-session-id', () => {
     if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
       return crypto.randomUUID()

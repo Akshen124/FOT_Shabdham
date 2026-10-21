@@ -8,7 +8,7 @@ export function useSpeechRecognition() {
   const isListening = ref(false)
   const error = ref<string | null>(null)
   const transcript = ref('')
-  const apiBase = useRuntimeConfig().public.apiBase
+  const apiBase = (useRuntimeConfig().public.apiBase as string) || ''
 
   const isSupported = computed(
     () =>
