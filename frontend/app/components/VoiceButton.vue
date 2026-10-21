@@ -74,8 +74,8 @@ const ariaLabel = computed(() => {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  width: 11.5rem;
-  min-height: 3.5rem;
+  width: 9rem;
+  min-height: 2.5rem;
   border-radius: 999px;
   padding: 0.75rem 1.25rem;
   background: rgba(255, 255, 255, 0.85);

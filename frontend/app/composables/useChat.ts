@@ -75,8 +75,9 @@ export function useChat() {
         console.info('[Chat] Request aborted')
         // No error UI for intentional cancellation
       } else {
-        const messageText = caughtError instanceof Error ? caughtError.message : 'Something went wrong while generating the response.'
-        error.value = messageText
+        console.error('[Chat] Communication failed:', caughtError)
+        addMessage('assistant', 'I am disconnected at the moment.')
+        error.value = null
       }
       return false
     } finally {
@@ -101,7 +102,7 @@ export function useChat() {
     isSpeaking.value = false
   }
 
-return {
+  return {
     messages,
     isThinking,
     isSpeaking,
@@ -110,5 +111,6 @@ return {
     transcript,
     sendMessage,
     stopProcessing,
+    addMessage,
   }
 }

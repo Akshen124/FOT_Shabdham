@@ -49,7 +49,7 @@
           </div>
 
           <div v-if="isThinking" class="hero__thinking"> Thinking...</div>
-          <div v-if="error" class="hero__error">{{ error }}</div>
+          <div v-if="error && !error.toLowerCase().includes('failed to fetch')" class="hero__error">{{ error }}</div>
         </div>
       </div>
 
@@ -79,12 +79,12 @@
             :listening="isListening"
             :processing="isThinking"
             :speaking="isSpeaking"
-            :error="Boolean(voiceError)"
+            :error="Boolean(displayVoiceError)"
             :disabled="isThinking"
             @click="toggleVoiceInput"
           />
-          <p v-if="voiceError || ttsWarning" class="hero__voice-error">
-            {{ voiceError || ttsWarning }}
+          <p v-if="displayVoiceError" class="hero__voice-error">
+            {{ displayVoiceError }}
           </p>
         </div>
       </div>
@@ -99,7 +99,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import ChatMessage from '~/components/ChatMessage.vue'
 import SuggestionButtons from '~/components/SuggestionButtons.vue'
 import VoiceButton from '~/components/VoiceButton.vue'
@@ -122,7 +122,7 @@ const modelLoaded = ref(false)
 const isStarted = ref(false)
 const contentVisible = ref(false)
 
-const { messages, isThinking, isSpeaking, error, ttsWarning, sendMessage, stopProcessing } = useChat()
+const { messages, isThinking, isSpeaking, error, ttsWarning, sendMessage, stopProcessing, addMessage } = useChat()
 
 watch(messages, () => {
   nextTick(() => {
@@ -134,6 +134,7 @@ watch(messages, () => {
     }
   })
 }, { deep: true })
+
 const {
   isListening,
   isSupported,
@@ -141,7 +142,20 @@ const {
   transcript: speechTranscript,
   startListening,
   stopListening,
-} = useSpeechRecognition()
+} = useSpeechRecognition({
+  onDisconnected: () => {
+    addMessage('assistant', 'Shabdam is disconnected at the moment.')
+  },
+})
+
+const displayVoiceError = computed(() => {
+  const err = voiceError.value || ttsWarning.value
+  if (!err) return null
+  if (err.toLowerCase().includes('failed to fetch') || err.toLowerCase().includes('networkerror')) {
+    return null
+  }
+  return err
+})
 
 const emit = defineEmits<{
   (e: 'started'): void

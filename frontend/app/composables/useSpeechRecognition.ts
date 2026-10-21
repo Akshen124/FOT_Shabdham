@@ -4,7 +4,11 @@ const SILENCE_DURATION_MS = 1_200
 const MAX_RECORDING_DURATION_MS = 30_000
 const SILENCE_THRESHOLD = 0.008
 
-export function useSpeechRecognition() {
+export interface UseSpeechRecognitionOptions {
+  onDisconnected?: () => void
+}
+
+export function useSpeechRecognition(options?: UseSpeechRecognitionOptions) {
   const isListening = ref(false)
   const error = ref<string | null>(null)
   const transcript = ref('')
@@ -168,10 +172,23 @@ export function useSpeechRecognition() {
         throw new Error('No speech was detected. Please try again.')
       }
     } catch (caughtError) {
-      error.value =
-        caughtError instanceof Error
-          ? caughtError.message
-          : 'Something went wrong while processing your voice input.'
+      console.error('[STT-FRONTEND] Speech error:', caughtError)
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError)
+      const isFetchError =
+        message.toLowerCase().includes('failed to fetch') ||
+        message.toLowerCase().includes('networkerror') ||
+        message.toLowerCase().includes('load failed') ||
+        message.includes('Speech transcription failed (50')
+
+      if (isFetchError) {
+        error.value = null
+        options?.onDisconnected?.()
+      } else {
+        error.value =
+          caughtError instanceof Error
+            ? caughtError.message
+            : 'Something went wrong while processing your voice input.'
+      }
     }
   }
 
