@@ -290,28 +290,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(title="FOT AI API", version="1.0.0", lifespan=lifespan)
-default_origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://fot-shabdham.vercel.app",
-    "https://shabdam.genlab.cc",
-    "http://shabdam.genlab.cc",
-    "https://genlab.cc",
-]
-env_origins = [
+# Build the list of allowed origins. We always ensure the Vercel front‑end URL is present.
+allowed_origins = [
     origin.strip()
-    for origin in os.getenv("FRONTEND_ORIGINS", "").split(",")
+    for origin in os.getenv(
+        "FRONTEND_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000,https://fot-shabdham.vercel.app",
+    ).split(",")
     if origin.strip()
 ]
-allowed_origins = list(dict.fromkeys(default_origins + env_origins))
+# Defensive guard – make sure the Vercel origin is included even if an env var overrides the default.
+vercel_origin = "https://fot-shabdham.vercel.app"
+# Include any additional configured origins
+configured_origins = os.getenv("FRONTEND_ORIGINS", "")
+for origin in configured_origins.split(","):
+    origin = origin.strip()
+    if origin and origin not in allowed_origins:
+        allowed_origins.append(origin)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|.*\.vercel\.app|.*\.genlab\.cc)(:\d+)?",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
 )
 
 

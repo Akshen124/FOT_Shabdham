@@ -250,13 +250,41 @@ const mobileOpen = ref(false)
 
 /* Responsive */
 @media (max-width: 768px) {
-  .nav__links,
-  .nav__cta {
-    display: none;
+  .nav {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: auto;
+    padding: max(1rem, env(safe-area-inset-top, 1rem)) clamp(1.25rem, 5vw, 2rem) 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    pointer-events: none;
+    z-index: 50;
+    display: block !important;
   }
 
-  .nav__burger {
+  .nav__inner {
+    height: auto;
     display: flex;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .nav__logo {
+    pointer-events: auto;
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: #0f172a;
+  }
+
+  .nav__links,
+  .nav__cta,
+  .nav__burger,
+  .nav__mobile {
+    display: none !important;
   }
 }
 </style>

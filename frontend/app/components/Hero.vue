@@ -23,32 +23,34 @@
     </div>
 
     <div class="hero__content" :class="{ 'hero__content--visible': contentVisible }">
-      <p class="hero__intro font-body">
-        OK, hi! I'm your<br />freshly engineered assistant.
-      </p>
+      <div ref="scrollAreaRef" class="hero__scroll-area">
+        <p class="hero__intro font-body">
+          OK, hi! I'm your<br />freshly engineered assistant.
+        </p>
 
-      <h1 class="hero__heading font-display">
-        <span class="hero__heading-line hero__heading-line--cyber" data-text="Hey, I'm Shabdam. Let's make some magic!">
-          Hey, I’m Shabdam. Let’s make some magic!<span class="hero__cyber-cursor" aria-hidden="true">_</span>
-        </span>
-      </h1>
+        <h1 class="hero__heading font-display">
+          <span class="hero__heading-line hero__heading-line--cyber" data-text="Hey, I'm Shabdam. Let's make some magic!">
+            Hey, I’m Shabdam. Let’s make some magic!<span class="hero__cyber-cursor" aria-hidden="true">_</span>
+          </span>
+        </h1>
 
-      <div class="hero__actions">
-        <SuggestionButtons :suggestions="suggestions" @send="handleSuggestedMessage" />
-      </div>
-
-      <div class="hero__composer" v-if="messages.length || isThinking || Boolean(error)">
-        <div class="hero__chat" role="log" aria-live="polite">
-          <ChatMessage
-            v-for="message in messages"
-            :key="message.id"
-            :role="message.role"
-            :text="message.text"
-          />
+        <div class="hero__actions">
+          <SuggestionButtons :suggestions="suggestions" @send="handleSuggestedMessage" />
         </div>
 
-        <div v-if="isThinking" class="hero__thinking"> Thinking...</div>
-        <div v-if="error" class="hero__error">{{ error }}</div>
+        <div class="hero__composer" v-if="messages.length || isThinking || Boolean(error)">
+          <div class="hero__chat" role="log" aria-live="polite">
+            <ChatMessage
+              v-for="message in messages"
+              :key="message.id"
+              :role="message.role"
+              :text="message.text"
+            />
+          </div>
+
+          <div v-if="isThinking" class="hero__thinking"> Thinking...</div>
+          <div v-if="error" class="hero__error">{{ error }}</div>
+        </div>
       </div>
 
       <div class="hero__composer-controls">
@@ -97,7 +99,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import ChatMessage from '~/components/ChatMessage.vue'
 import SuggestionButtons from '~/components/SuggestionButtons.vue'
 import VoiceButton from '~/components/VoiceButton.vue'
@@ -113,6 +115,7 @@ const suggestions = [
   'Write us: info@genlab.com',
 ]
 
+const scrollAreaRef = ref<HTMLDivElement | null>(null)
 const input = ref('')
 const tvHeadRef = ref<any>(null)
 const modelLoaded = ref(false)
@@ -120,6 +123,17 @@ const isStarted = ref(false)
 const contentVisible = ref(false)
 
 const { messages, isThinking, isSpeaking, error, ttsWarning, sendMessage, stopProcessing } = useChat()
+
+watch(messages, () => {
+  nextTick(() => {
+    if (scrollAreaRef.value) {
+      scrollAreaRef.value.scrollTo({
+        top: scrollAreaRef.value.scrollHeight,
+        behavior: 'smooth',
+      })
+    }
+  })
+}, { deep: true })
 const {
   isListening,
   isSupported,
@@ -163,6 +177,13 @@ watch(speechTranscript, (value) => {
 
 function onModelLoaded() {
   modelLoaded.value = true
+  if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+    setTimeout(() => {
+      if (!isStarted.value) {
+        handleHeroClick()
+      }
+    }, 450)
+  }
 }
 
 function onModelStarted() {
@@ -221,7 +242,7 @@ function toggleVoiceInput() {
 <style scoped>
 .hero {
   position: relative;
-  width: 100vw;
+  width: 100%;
   height: 100vh;
   min-height: 600px;
   overflow: hidden;
@@ -260,6 +281,10 @@ function toggleVoiceInput() {
 .hero__content--visible {
   opacity: 1;
   transform: translateY(0);
+}
+
+.hero__scroll-area {
+  display: contents;
 }
 
 .hero__content a,
@@ -454,7 +479,7 @@ function toggleVoiceInput() {
 .hero__input-row {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.4rem;
   flex: 1;
   min-width: 0;
 }
@@ -462,24 +487,26 @@ function toggleVoiceInput() {
 .hero__composer-controls {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   width: min(100%, 36rem);
-  margin-top: 0.5rem;
+  margin-top: 0.35rem;
 }
 
 .hero__input {
   flex: 1;
   min-width: 0;
+  height: 2.375rem;
   border: 1px solid rgba(91, 50, 91, 0.2);
   background: rgba(255, 255, 255, 0.85);
   color: #0f172a;
   border-radius: 999px;
-  padding: 0.95rem 1.2rem;
-  font-size: 0.95rem;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
   outline: none;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 2px 10px rgba(91, 50, 91, 0.04);
+  box-shadow: 0 2px 8px rgba(91, 50, 91, 0.04);
   transition: all 0.25s ease;
 }
 
@@ -490,15 +517,20 @@ function toggleVoiceInput() {
 }
 
 .hero__send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.375rem;
   border-radius: 999px;
   border: 1px solid #5B325B;
   background: #5B325B;
   color: #fff;
-  padding: 0.9rem 1.4rem;
-  font-size: 0.85rem;
+  padding: 0 1.1rem;
+  font-size: 0.8rem;
   font-weight: 500;
-  box-shadow: 0 4px 14px rgba(91, 50, 91, 0.3);
+  box-shadow: 0 3px 10px rgba(91, 50, 91, 0.25);
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .hero__send:hover:not(:disabled) {
@@ -515,15 +547,20 @@ function toggleVoiceInput() {
 }
 
 .hero__stop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.375rem;
   border-radius: 999px;
   border: 1px solid rgba(220, 38, 38, 0.25);
   background: #ef4444;
   color: #fff;
-  padding: 0.9rem 1.3rem;
+  padding: 0 1rem;
   font-size: 0.8rem;
   font-weight: 500;
-  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.25);
+  box-shadow: 0 3px 10px rgba(239, 68, 68, 0.25);
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .hero__stop:hover:not(:disabled) {
@@ -624,42 +661,224 @@ function toggleVoiceInput() {
 
 @media (max-width: 768px) {
   .hero {
-    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    position: relative;
+    background: #f8fafc;
   }
 
+  .hero__bg {
+    display: none;
+  }
+
+  /* Large visual hero section on mobile (top ~30-34% of screen) */
+  .hero__model {
+    position: relative;
+    width: 100%;
+    height: clamp(200px, 32dvh, 280px);
+    flex: 0 0 auto;
+    pointer-events: auto;
+    padding-top: env(safe-area-inset-top, 0px);
+    background: radial-gradient(circle at 50% 40%, rgba(91, 50, 91, 0.06) 0%, rgba(248, 250, 252, 0.95) 75%);
+    overflow: hidden;
+    transition: height 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Clean, white content panel overlapping the hero section with rounded top corners */
   .hero__content {
-    width: min(100%, 100%);
-    padding-left: clamp(1.25rem, 5vw, 2rem);
-    padding-right: clamp(1.25rem, 5vw, 2rem);
+    position: relative;
+    z-index: 10;
+    width: 100%;
     max-width: 100%;
-  }
-
-  .hero__input-row {
+    margin-top: -1.75rem;
+    background: #ffffff;
+    border-top-left-radius: 28px;
+    border-top-right-radius: 28px;
+    box-shadow: 0 -10px 30px rgba(15, 23, 42, 0.08);
+    border: 1px solid rgba(91, 50, 91, 0.06);
+    border-bottom: none;
+    padding: 1.25rem clamp(1rem, 4vw, 1.25rem) max(0.75rem, env(safe-area-inset-bottom, 0.75rem));
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
     flex-direction: column;
-    align-items: stretch;
+    justify-content: space-between;
+    box-sizing: border-box;
+    overflow: hidden;
   }
 
-  .hero__composer-controls {
+  /* Scrollable upper area containing greeting, heading, suggestions & messages */
+  .hero__scroll-area {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 0.25rem;
+    display: flex;
     flex-direction: column;
-    align-items: stretch;
+    gap: 0.5rem;
+    scrollbar-width: thin;
   }
 
-  .hero__voice-area {
-    align-items: stretch;
+  /* When chat is active on mobile */
+  .hero--chat-active .hero__model {
+    height: clamp(120px, 18dvh, 160px);
   }
 
   .hero--chat-active .hero__content {
-    max-height: calc(100svh - 5rem);
-    margin-top: 4.5rem;
-    margin-bottom: 0.5rem;
+    margin-top: -1.25rem;
+    padding-top: 1rem;
+  }
+
+  .hero--chat-active .hero__intro {
+    display: none;
+  }
+
+  .hero--chat-active .hero__heading {
+    font-size: 1.15rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .hero--chat-active .hero__actions {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 0.35rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-bottom: 0.35rem;
+  }
+
+  .hero--chat-active .hero__actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .hero--chat-active .hero__composer {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .hero--chat-active .hero__chat {
-    max-height: 24vh;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: visible;
   }
 
-  .hero__send {
+  /* Typography on mobile */
+  .hero__intro {
+    font-size: 0.825rem;
+    line-height: 1.45;
+    margin-bottom: 0.35rem;
+    color: #64748b;
+  }
+
+  .hero__heading {
+    margin-bottom: 0.85rem;
+  }
+
+  .hero__heading-line--cyber {
+    font-size: clamp(1.35rem, 5.8vw, 1.85rem);
+    line-height: 1.2;
+    word-break: break-word;
+    filter: none;
+  }
+
+  /* Hide blurry multi-line glitch slice duplicates on mobile */
+  .hero__heading-line--cyber::before,
+  .hero__heading-line--cyber::after {
+    display: none;
+  }
+
+  .hero__actions {
+    margin-bottom: 0.65rem;
     width: 100%;
+  }
+
+  .hero__composer {
+    width: 100%;
+    max-width: 100%;
+    margin-top: 0.25rem;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Typing screen / composer controls: ALIGNED DOWN AT THE BOTTOM */
+  .hero__composer-controls {
+    flex: 0 0 auto;
+    margin-top: auto;
+    padding-top: 0.5rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
+    width: 100%;
+    max-width: 100%;
+    background: #ffffff;
+    border-top: 1px solid rgba(91, 50, 91, 0.06);
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+  }
+
+  .hero__input-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.4rem;
+    width: 100%;
+  }
+
+  .hero__input {
+    flex: 1;
+    min-width: 0;
+    height: 2.5rem;
+    font-size: 0.88rem;
+    padding: 0.5rem 0.95rem;
+  }
+
+  .hero__send,
+  .hero__stop {
+    flex: 0 0 auto;
+    height: 2.5rem;
+    padding: 0 1.1rem;
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+
+  .hero__voice-area {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .hero__loader {
+    bottom: 1.5rem;
+    right: 1.5rem;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .hero__content {
+    width: min(100%, 540px);
+    padding-left: clamp(1.5rem, 4vw, 3rem);
+    padding-right: 1.5rem;
+  }
+
+  .hero__heading-line--cyber {
+    font-size: clamp(1.8rem, 3.4vw, 2.5rem);
+  }
+
+  .hero__composer {
+    max-width: 100%;
+  }
+
+  .hero__composer-controls {
+    max-width: 100%;
   }
 }
 </style>

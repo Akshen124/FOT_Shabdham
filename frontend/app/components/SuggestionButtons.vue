@@ -61,4 +61,20 @@ defineEmits<{
   outline: 2px solid #5B325B;
   outline-offset: 2px;
 }
+
+@media (max-width: 768px) {
+  .suggestions {
+    gap: 0.4rem;
+  }
+
+  .hero__btn {
+    padding: 0.45rem 0.85rem;
+    font-size: 0.775rem;
+    white-space: normal;
+    text-align: left;
+    line-height: 1.35;
+    max-width: 100%;
+    word-break: break-word;
+  }
+}
 </style>

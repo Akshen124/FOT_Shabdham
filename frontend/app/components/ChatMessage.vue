@@ -1,7 +1,7 @@
 <template>
   <div ref="root" class="chat-message" :class="[`chat-message--${role}`]">
     <div class="chat-message__bubble">
-      <span class="chat-message__label">{{ role === 'user' ? 'USER' : 'AI' }}</span>
+      <span class="chat-message__label">{{ role === 'user' ? '' : '' }}</span>
       <p v-if="role === 'assistant'" class="assistant-text">{{ displayedText }}<span v-if="!typingDone" class="caret"></span></p>
       <p v-else>{{ text }}</p>
     </div>
@@ -102,6 +102,7 @@ onUnmounted(() => {
   justify-content: flex-start;
 }
 
+
 .chat-message__bubble {
   max-width: min(100%, 28rem);
   padding: 0.85rem 1.15rem 0.9rem;
@@ -125,6 +126,10 @@ onUnmounted(() => {
   margin-bottom: 0.4rem;
 }
 
+.chat-message__label:empty {
+  display: none;
+}
+
 .chat-message--assistant .chat-message__label {
   color: #5B325B;
 }
@@ -135,6 +140,8 @@ onUnmounted(() => {
   color: inherit;
   white-space: pre-wrap;
 }
+
+
 
 /* Assistant message typography */
 .chat-message--assistant .chat-message__bubble p {
@@ -152,4 +159,26 @@ onUnmounted(() => {
   margin-left: 3px;
 }
 @keyframes blink { to { visibility: hidden; } }
+
+@media (max-width: 768px) {
+  .chat-message__bubble {
+    max-width: 92%;
+    padding: 0.65rem 0.95rem;
+    border-radius: 1rem;
+  }
+
+  .chat-message--user .chat-message__bubble {
+    border-radius: 1rem 1rem 0.25rem 1rem;
+  }
+
+  .chat-message__bubble p {
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+
+  .chat-message--assistant .chat-message__bubble p {
+    font-size: clamp(1.05rem, 4.4vw, 1.35rem);
+    line-height: 1.35;
+  }
+}
 </style>

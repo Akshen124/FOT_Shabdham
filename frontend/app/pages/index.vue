@@ -26,5 +26,7 @@ useHead({
 main {
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
 }
 </style>

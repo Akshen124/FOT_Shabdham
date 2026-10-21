@@ -13,7 +13,7 @@
     :aria-label="ariaLabel"
     @click="$emit('click')"
   >
-    <span class="voice-button__icon" aria-hidden="true">{{ icon }}</span>
+    <span v-if="icon" class="voice-button__icon" aria-hidden="true">{{ icon }}</span>
     <span class="voice-button__label">{{ label }}</span>
   </button>
 </template>
@@ -41,7 +41,6 @@ const props = withDefaults(
 const emit = defineEmits<{
   (event: 'click'): void
 }>()
-
 
 const icon = computed(() => {
   if (props.error) return ''
@@ -148,6 +147,16 @@ const ariaLabel = computed(() => {
   }
   100% {
     box-shadow: 0 0 0 0 rgba(91, 50, 91, 0);
+  }
+}
+
+@media (max-width: 768px) {
+  .voice-button {
+    width: 100%;
+    min-height: 2.5rem;
+    padding: 0.5rem 1rem;
+    gap: 0.4rem;
+    touch-action: manipulation;
   }
 }
 </style>

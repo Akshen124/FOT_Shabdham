@@ -291,9 +291,8 @@ onMounted(async () => {
   }
 
   // ── Events ──
-  if (!isTouchDevice) {
-    window.addEventListener('pointermove', onPointerMove, { passive: true })
-  }
+  window.addEventListener('pointermove', onPointerMove, { passive: true })
+  window.addEventListener('pointerdown', onPointerMove, { passive: true })
   window.addEventListener('resize', onResize, { passive: true })
   if (containerRef.value) {
     containerRef.value.addEventListener('click', onCanvasClick)
@@ -365,17 +364,17 @@ function updateResponsiveDimensions(w: number, h: number) {
   renderer.setSize(w, h)
 
   if (w < 640) {
-    // Mobile: centered layout
-    finalScale = 0.42
-    finalPosX = 0.12
-    finalPosY = -0.24
+    // Mobile: zoomed in close-up on robot TV head & glowing eyes with clean top margin
+    finalScale = 0.44
+    finalPosX = 0
+    finalPosY = -0.13
     finalBaseRotY = 0
-    startScale = 0.38
-    startPosX = 0.12
-    startPosY = -0.20
+    startScale = 0.42
+    startPosX = 0
+    startPosY = -0.11
     startBaseRotY = 0
-    camera.position.set(0, -0.05, 3.8)
-    camera.lookAt(0, -0.14, 0)
+    camera.position.set(0, 0.11, 2.45)
+    camera.lookAt(0, 0.11, 0)
   } else if (w < 900) {
     // Tablet: modest size on right
     finalScale = 0.48
@@ -868,6 +867,7 @@ onBeforeUnmount(() => {
   if (rafId) cancelAnimationFrame(rafId)
 
   window.removeEventListener('pointermove', onPointerMove)
+  window.removeEventListener('pointerdown', onPointerMove)
   window.removeEventListener('resize', onResize)
   if (containerRef.value) {
     containerRef.value.removeEventListener('click', onCanvasClick)
@@ -914,6 +914,7 @@ onBeforeUnmount(() => {
   transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: auto;
   cursor: pointer;
+  touch-action: pan-y;
 }
 
 .tvhead--loaded {
