@@ -660,7 +660,8 @@ function toggleVoiceInput() {
 }
 
 @media (max-width: 768px) {
-  .hero {
+  .hero,
+  .hero.hero--chat-active {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
@@ -671,122 +672,78 @@ function toggleVoiceInput() {
     max-height: 100dvh;
     overflow: hidden;
     position: relative;
-    background: #f8fafc;
+    background: #ffffff;
   }
 
   .hero__bg {
     display: none;
   }
 
-  /* Large visual hero section on mobile (top ~30-34% of screen) */
+  /* Top 60%: Animated 3D robot head section */
   .hero__model {
     position: relative;
     width: 100%;
-    height: clamp(200px, 32dvh, 280px);
-    flex: 0 0 auto;
+    height: 60vh;
+    height: 60dvh;
+    flex: 0 0 60dvh;
+    max-height: 60dvh;
     pointer-events: auto;
     padding-top: env(safe-area-inset-top, 0px);
-    background: radial-gradient(circle at 50% 40%, rgba(91, 50, 91, 0.06) 0%, rgba(248, 250, 252, 0.95) 75%);
+    background: radial-gradient(circle at 50% 50%, rgba(91, 50, 91, 0.04) 0%, rgba(248, 250, 252, 0.95) 75%);
     overflow: hidden;
-    transition: height 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    box-sizing: border-box;
   }
 
-  /* Clean, white content panel overlapping the hero section with rounded top corners */
-  .hero__content {
+  /* Bottom 40%: Independently scrollable content & chat interface (no overlap) */
+  .hero__content,
+  .hero--chat-active .hero__content {
+    opacity: 1;
+    transform: translateY(0);
     position: relative;
     z-index: 10;
     width: 100%;
     max-width: 100%;
-    margin-top: -1.75rem;
+    height: 40vh;
+    height: 40dvh;
+    flex: 0 0 40dvh;
+    max-height: 40dvh;
+    margin-top: 0; /* No overlap with top robot section */
+    margin-bottom: 0;
     background: #ffffff;
-    border-top-left-radius: 28px;
-    border-top-right-radius: 28px;
-    box-shadow: 0 -10px 30px rgba(15, 23, 42, 0.08);
-    border: 1px solid rgba(91, 50, 91, 0.06);
-    border-bottom: none;
-    padding: 1.25rem clamp(1rem, 4vw, 1.25rem) max(0.75rem, env(safe-area-inset-bottom, 0.75rem));
-    flex: 1 1 auto;
-    min-height: 0;
+    border-top: 1px solid rgba(91, 50, 91, 0.08);
+    box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.04);
+    padding: 0.75rem clamp(1rem, 4vw, 1.25rem) calc(0.55rem + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     box-sizing: border-box;
-    overflow: hidden;
+    overflow-y: auto; /* Independently scrollable */
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
   }
 
   /* Scrollable upper area containing greeting, heading, suggestions & messages */
   .hero__scroll-area {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding-right: 0.25rem;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    scrollbar-width: thin;
-  }
-
-  /* When chat is active on mobile */
-  .hero--chat-active .hero__model {
-    height: clamp(120px, 18dvh, 160px);
-  }
-
-  .hero--chat-active .hero__content {
-    margin-top: -1.25rem;
-    padding-top: 1rem;
-  }
-
-  .hero--chat-active .hero__intro {
-    display: none;
-  }
-
-  .hero--chat-active .hero__heading {
-    font-size: 1.15rem;
-    margin-bottom: 0.25rem;
-  }
-
-  .hero--chat-active .hero__actions {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    padding-bottom: 0.35rem;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    margin-bottom: 0.35rem;
-  }
-
-  .hero--chat-active .hero__actions::-webkit-scrollbar {
-    display: none;
-  }
-
-  .hero--chat-active .hero__composer {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .hero--chat-active .hero__chat {
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: none;
-    overflow-y: visible;
+    gap: 0.45rem;
+    flex: 1 0 auto;
   }
 
   /* Typography on mobile */
   .hero__intro {
-    font-size: 0.825rem;
-    line-height: 1.45;
-    margin-bottom: 0.35rem;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    margin-bottom: 0.2rem;
     color: #64748b;
   }
 
   .hero__heading {
-    margin-bottom: 0.85rem;
+    margin-bottom: 0.5rem;
   }
 
   .hero__heading-line--cyber {
-    font-size: clamp(1.35rem, 5.8vw, 1.85rem);
+    font-size: clamp(1.2rem, 5vw, 1.55rem);
     line-height: 1.2;
     word-break: break-word;
     filter: none;
@@ -799,7 +756,7 @@ function toggleVoiceInput() {
   }
 
   .hero__actions {
-    margin-bottom: 0.65rem;
+    margin-bottom: 0.45rem;
     width: 100%;
   }
 
@@ -807,17 +764,23 @@ function toggleVoiceInput() {
     width: 100%;
     max-width: 100%;
     margin-top: 0.25rem;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.45rem;
   }
 
-  /* Typing screen / composer controls: ALIGNED DOWN AT THE BOTTOM */
+  .hero__chat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  /* Typing screen / composer controls: pinned at bottom of the bottom 50% */
   .hero__composer-controls {
     flex: 0 0 auto;
     margin-top: auto;
-    padding-top: 0.5rem;
+    padding-top: 0.4rem;
     flex-direction: column;
     align-items: stretch;
-    gap: 0.4rem;
+    gap: 0.35rem;
     width: 100%;
     max-width: 100%;
     background: #ffffff;
@@ -830,24 +793,24 @@ function toggleVoiceInput() {
   .hero__input-row {
     flex-direction: row;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.35rem;
     width: 100%;
   }
 
   .hero__input {
     flex: 1;
     min-width: 0;
-    height: 2.5rem;
-    font-size: 0.88rem;
-    padding: 0.5rem 0.95rem;
+    height: 2.375rem;
+    font-size: 0.875rem;
+    padding: 0.45rem 0.95rem;
   }
 
   .hero__send,
   .hero__stop {
     flex: 0 0 auto;
-    height: 2.5rem;
-    padding: 0 1.1rem;
-    font-size: 0.82rem;
+    height: 2.375rem;
+    padding: 0 1rem;
+    font-size: 0.8rem;
     white-space: nowrap;
   }
 
@@ -857,8 +820,8 @@ function toggleVoiceInput() {
   }
 
   .hero__loader {
-    bottom: 1.5rem;
-    right: 1.5rem;
+    bottom: 1rem;
+    right: 1rem;
   }
 }
 

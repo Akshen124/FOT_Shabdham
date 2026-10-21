@@ -40,6 +40,7 @@ let screenTexture: any = null
 let rafId: number = 0
 let clock: any = null
 let THREE: any = null
+let resizeObserver: ResizeObserver | null = null
 
 // Pointer tracking
 let mouseX = 0
@@ -296,6 +297,17 @@ onMounted(async () => {
   window.addEventListener('resize', onResize, { passive: true })
   if (containerRef.value) {
     containerRef.value.addEventListener('click', onCanvasClick)
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const { width, height } = entry.contentRect
+          if (width > 0 && height > 0) {
+            updateResponsiveDimensions(width, height)
+          }
+        }
+      })
+      resizeObserver.observe(containerRef.value)
+    }
   }
 
   // ── Render loop ──
@@ -360,22 +372,22 @@ function onPointerMove(e: PointerEvent) {
 function updateResponsiveDimensions(w: number, h: number) {
   if (!camera || !renderer) return
   camera.aspect = w / h
-  camera.updateProjectionMatrix()
-  renderer.setSize(w, h)
 
-  if (w < 640) {
-    // Mobile: zoomed in close-up on robot TV head & glowing eyes with clean top margin
-    finalScale = 0.44
+  if (w <= 768) {
+    // Mobile: 60/40 split top section, centered on TV head & glowing eyes with natural proportions
+    camera.zoom = 1.15 // Maintain zoom level without perspective distortion
+    finalScale = 0.50
     finalPosX = 0
-    finalPosY = -0.13
+    finalPosY = -0.32 // Moved downward ~45px so entire head and top edge are fully visible
     finalBaseRotY = 0
-    startScale = 0.42
+    startScale = 0.50
     startPosX = 0
-    startPosY = -0.11
+    startPosY = -0.32
     startBaseRotY = 0
-    camera.position.set(0, 0.11, 2.45)
-    camera.lookAt(0, 0.11, 0)
+    camera.position.set(0, -0.04, 3.25)
+    camera.lookAt(0, -0.04, 0)
   } else if (w < 900) {
+    camera.zoom = 1.0
     // Tablet: modest size on right
     finalScale = 0.48
     finalPosX = 0.62
@@ -388,6 +400,7 @@ function updateResponsiveDimensions(w: number, h: number) {
     camera.position.set(0.08, -0.07, 3.6)
     camera.lookAt(0.28, -0.14, 0)
   } else if (w < 1180) {
+    camera.zoom = 1.0
     // Laptop: medium size on right, squared up to user
     finalScale = 0.52
     finalPosX = 0.92
@@ -400,6 +413,7 @@ function updateResponsiveDimensions(w: number, h: number) {
     camera.position.set(0.12, -0.08, 3.5)
     camera.lookAt(0.42, -0.16, 0)
   } else {
+    camera.zoom = 1.0
     // Large desktop: right-aligned hero assistant, perfectly facing viewer
     finalScale = 0.58
     finalPosX = 1.05
@@ -412,6 +426,9 @@ function updateResponsiveDimensions(w: number, h: number) {
     camera.position.set(0.14, -0.08, 3.4)
     camera.lookAt(0.48, -0.16, 0)
   }
+
+  camera.updateProjectionMatrix()
+  renderer.setSize(w, h)
 
   if (!isStarted.value) {
     targetPosX = startPosX
@@ -869,6 +886,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerdown', onPointerMove)
   window.removeEventListener('resize', onResize)
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
   if (containerRef.value) {
     containerRef.value.removeEventListener('click', onCanvasClick)
   }
