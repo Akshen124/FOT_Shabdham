@@ -3,7 +3,8 @@
 The assistant supports typed chat and one-question-at-a-time microphone input.
 Both send text to the same `run_agent` function and existing Qdrant-backed RAG
 retrieval. Final answers from both input methods are spoken through the local
-Windows speakers using the local Kokoro TTS service. Playback is synchronous;
+Windows speakers using Groq Cloud TTS (`canopylabs/orpheus-v1-english`) with
+automatic Deepgram Cloud TTS (`aura-asteria-en`) fallback. Playback is synchronous;
 the answer remains visible if speech generation or playback fails.
 
 ## Run the chat interface
@@ -14,7 +15,7 @@ Install the project dependencies with `uv sync`, then run:
 uv run streamlit run app.py
 ```
 
-Configure `GROQ_API_KEY`, `QDRANT_URL`, and `QDRANT_API_KEY` in `.env` as for
+Configure `GROQ_API_KEY`, `DEEPGRAM_API_KEY`, `QDRANT_URL`, and `QDRANT_API_KEY` in `.env` as for
 the command-line assistant. For Redis-backed conversation memory, set
 `REDIS_URL=redis://localhost:6379/0` and optionally `REDIS_MEMORY_TTL=3600`.
 Voice transcription uses the local NVIDIA NeMo Parakeet Unified English 0.6B
@@ -25,15 +26,18 @@ first used in Streamlit. Windows speaker playback uses the built-in `winsound`
 module. Allow microphone access for the Streamlit site to record a voice
 question.
 
-Kokoro must already be running locally. Configure these backend-only settings in
-`.env` if the defaults do not match your server:
+Text-to-speech uses Groq Cloud TTS as the primary provider with automatic fallback
+to Deepgram Aura. Configure these backend settings in `.env`:
 
 ```dotenv
-KOKORO_TTS_URL=http://localhost:8880
-KOKORO_TTS_VOICE=af_bella
-KOKORO_TTS_MODEL=kokoro
-KOKORO_TTS_FORMAT=mp3
-KOKORO_TTS_SPEED=1.0
+GROQ_API_KEY=your_groq_api_key
+GROQ_TTS_MODEL=canopylabs/orpheus-v1-english
+GROQ_TTS_VOICE=autumn
+DEEPGRAM_API_KEY=your_deepgram_api_key
+DEEPGRAM_TTS_VOICE=aura-asteria-en
+TTS_PROVIDER=auto
+TTS_AUDIO_FORMAT=wav
+TTS_TIMEOUT_SECONDS=30.0
 ```
 
 A local Redis instance can be started with:
@@ -90,8 +94,6 @@ Available routes:
 - `GET /api/health` -> `{"status": "ok"}`
 - `POST /api/chat` -> `{"response": "..."}`
 - `POST /api/stt` -> `{"text": "..."}` for uploaded audio
-- `POST /api/tts` -> raw Kokoro audio bytes (MP3 by default, `audio/mpeg`); the existing optional JSON response is also retained
+- `POST /api/tts` -> raw audio bytes (WAV by default, `audio/wav`); the existing optional JSON response is also retained
 
-The Nuxt frontend continues to call the FastAPI `/api/tts` route. Only the
-backend calls Kokoro at `KOKORO_TTS_URL`; the Kokoro URL and voice settings are
-not exposed to the frontend.
+The Nuxt frontend continues to call the FastAPI `/api/tts` route. The backend calls Groq Cloud TTS (`canopylabs/orpheus-v1-english`) with automatic fallback to Deepgram Cloud TTS (`aura-asteria-en`). Provider credentials and voice settings are not exposed to the frontend.
