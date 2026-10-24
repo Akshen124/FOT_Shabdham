@@ -197,7 +197,7 @@ def _sync_groq_tts(
 async def _async_deepgram_tts(text: str, audio_format: str = "wav") -> tuple[bytes, str]:
     api_key = os.getenv("DEEPGRAM_API_KEY")
     if not api_key:
-        raise TextToSpeechError("DEEPGRAM_API_KEY is not configured for TTS fallback.")
+        raise TextToSpeechError("DEEPGRAM_API_KEY is not configured.")
     voice = os.getenv("DEEPGRAM_TTS_VOICE", DEFAULT_DEEPGRAM_VOICE)
 
     url = f"https://api.deepgram.com/v1/speak?model={voice}"
@@ -235,7 +235,7 @@ async def _async_deepgram_tts(text: str, audio_format: str = "wav") -> tuple[byt
 def _sync_deepgram_tts(text: str, audio_format: str = "wav") -> tuple[bytes, str]:
     api_key = os.getenv("DEEPGRAM_API_KEY")
     if not api_key:
-        raise TextToSpeechError("DEEPGRAM_API_KEY is not configured for TTS fallback.")
+        raise TextToSpeechError("DEEPGRAM_API_KEY is not configured.")
     voice = os.getenv("DEEPGRAM_TTS_VOICE", DEFAULT_DEEPGRAM_VOICE)
     url = f"https://api.deepgram.com/v1/speak?model={voice}"
     if audio_format == "wav":
@@ -282,7 +282,7 @@ def _map_tts_error(error: Exception | None, provider: str = "Groq") -> TextToSpe
 
 async def async_text_to_speech(text: str) -> tuple[bytes, str]:
     """Generate audio asynchronously for FastAPI endpoints.
-    Tries Groq Orpheus TTS primary; automatically falls back to Deepgram Aura if configured.
+    Tries Deepgram Aura TTS primary; automatically falls back to Groq Orpheus if configured.
     """
     cleaned_text = clean_text_for_tts(text)
     if not cleaned_text:
@@ -291,12 +291,28 @@ async def async_text_to_speech(text: str) -> tuple[bytes, str]:
     preferred_provider = os.getenv("TTS_PROVIDER", "auto").strip().lower()
     audio_format = os.getenv("TTS_AUDIO_FORMAT", "wav").strip().lower() or "wav"
 
-    # If explicitly set to deepgram, use Deepgram directly
-    if preferred_provider == "deepgram":
-        return await _async_deepgram_tts(cleaned_text, audio_format=audio_format)
+    # If explicitly set to groq, use Groq directly
+    if preferred_provider in ("groq", "orpheus"):
+        return await _async_groq_tts(cleaned_text, audio_format=audio_format)
 
-    groq_error: Exception | None = None
+    dg_error: Exception | None = None
+    if os.getenv("DEEPGRAM_API_KEY"):
+        try:
+            return await _async_deepgram_tts(cleaned_text, audio_format=audio_format)
+        except Exception as error:
+            dg_error = error
+            logger.warning(
+                "[TTS] Deepgram Aura request failed with %s: %s",
+                type(error).__name__,
+                _sanitize_log_message(str(error)),
+            )
+    else:
+        dg_error = TextToSpeechError("DEEPGRAM_API_KEY is not configured.")
+        logger.warning("[TTS] DEEPGRAM_API_KEY is not set.")
+
+    # Fallback to Groq Orpheus if configured
     if os.getenv("GROQ_API_KEY"):
+        logger.info("[TTS] Deepgram Aura unavailable; attempting Groq Orpheus TTS fallback...")
         try:
             return await _async_groq_tts(cleaned_text, audio_format=audio_format)
         except (
@@ -307,42 +323,25 @@ async def async_text_to_speech(text: str) -> tuple[bytes, str]:
             httpx.RequestError,
             TextToSpeechError,
         ) as error:
-            groq_error = error
-            logger.warning(
-                "[TTS] Groq request failed with %s: %s",
+            logger.error(
+                "[TTS] Groq Orpheus fallback also failed: %s: %s",
                 type(error).__name__,
                 _sanitize_log_message(str(error)),
             )
         except Exception as error:
-            groq_error = error
-            logger.warning(
-                "[TTS] Unexpected Groq failure with %s: %s",
+            logger.error(
+                "[TTS] Groq Orpheus fallback unexpected failure: %s: %s",
                 type(error).__name__,
                 _sanitize_log_message(str(error)),
             )
-    else:
-        groq_error = TextToSpeechError("GROQ_API_KEY is not configured.")
-        logger.warning("[TTS] GROQ_API_KEY is not set.")
-
-    # Fallback to Deepgram Aura if configured
-    if os.getenv("DEEPGRAM_API_KEY"):
-        logger.info("[TTS] Groq unavailable; attempting Deepgram Aura TTS fallback...")
-        try:
-            return await _async_deepgram_tts(cleaned_text, audio_format=audio_format)
-        except Exception as dg_error:
-            logger.error(
-                "[TTS] Deepgram Aura fallback also failed: %s: %s",
-                type(dg_error).__name__,
-                _sanitize_log_message(str(dg_error)),
-            )
 
     # If both providers failed or were unavailable, raise the mapped error
-    raise _map_tts_error(groq_error, provider="Groq")
+    raise _map_tts_error(dg_error, provider="Deepgram")
 
 
 def text_to_speech(text: str) -> tuple[bytes, str]:
     """Generate audio synchronously for the Streamlit interface.
-    Tries Groq Orpheus TTS primary; automatically falls back to Deepgram Aura if configured.
+    Tries Deepgram Aura TTS primary; automatically falls back to Groq Orpheus if configured.
     """
     cleaned_text = clean_text_for_tts(text)
     if not cleaned_text:
@@ -351,11 +350,26 @@ def text_to_speech(text: str) -> tuple[bytes, str]:
     preferred_provider = os.getenv("TTS_PROVIDER", "auto").strip().lower()
     audio_format = os.getenv("TTS_AUDIO_FORMAT", "wav").strip().lower() or "wav"
 
-    if preferred_provider == "deepgram":
-        return _sync_deepgram_tts(cleaned_text, audio_format=audio_format)
+    if preferred_provider in ("groq", "orpheus"):
+        return _sync_groq_tts(cleaned_text, audio_format=audio_format)
 
-    groq_error: Exception | None = None
+    dg_error: Exception | None = None
+    if os.getenv("DEEPGRAM_API_KEY"):
+        try:
+            return _sync_deepgram_tts(cleaned_text, audio_format=audio_format)
+        except Exception as error:
+            dg_error = error
+            logger.warning(
+                "[TTS] Deepgram Aura request failed with %s: %s",
+                type(error).__name__,
+                _sanitize_log_message(str(error)),
+            )
+    else:
+        dg_error = TextToSpeechError("DEEPGRAM_API_KEY is not configured.")
+        logger.warning("[TTS] DEEPGRAM_API_KEY is not set.")
+
     if os.getenv("GROQ_API_KEY"):
+        logger.info("[TTS] Deepgram Aura unavailable; attempting Groq Orpheus TTS fallback...")
         try:
             return _sync_groq_tts(cleaned_text, audio_format=audio_format)
         except (
@@ -366,32 +380,16 @@ def text_to_speech(text: str) -> tuple[bytes, str]:
             httpx.RequestError,
             TextToSpeechError,
         ) as error:
-            groq_error = error
-            logger.warning(
-                "[TTS] Groq request failed with %s: %s",
+            logger.error(
+                "[TTS] Groq Orpheus fallback also failed: %s: %s",
                 type(error).__name__,
                 _sanitize_log_message(str(error)),
             )
         except Exception as error:
-            groq_error = error
-            logger.warning(
-                "[TTS] Unexpected Groq failure with %s: %s",
+            logger.error(
+                "[TTS] Groq Orpheus fallback unexpected failure: %s: %s",
                 type(error).__name__,
                 _sanitize_log_message(str(error)),
             )
-    else:
-        groq_error = TextToSpeechError("GROQ_API_KEY is not configured.")
-        logger.warning("[TTS] GROQ_API_KEY is not set.")
 
-    if os.getenv("DEEPGRAM_API_KEY"):
-        logger.info("[TTS] Groq unavailable; attempting Deepgram Aura TTS fallback...")
-        try:
-            return _sync_deepgram_tts(cleaned_text, audio_format=audio_format)
-        except Exception as dg_error:
-            logger.error(
-                "[TTS] Deepgram Aura fallback also failed: %s: %s",
-                type(dg_error).__name__,
-                _sanitize_log_message(str(dg_error)),
-            )
-
-    raise _map_tts_error(groq_error, provider="Groq")
+    raise _map_tts_error(dg_error, provider="Deepgram")
