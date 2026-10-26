@@ -1,8 +1,11 @@
 import asyncio
+import io
 import logging
 import math
 import os
 import re
+import time
+import wave
 
 from groq import AsyncGroq, Groq
 from groq import (
@@ -18,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_GROQ_MODEL = "canopylabs/orpheus-v1-english"
 DEFAULT_GROQ_VOICE = "hannah"
-DEFAULT_DEEPGRAM_VOICE = "aura-asteria-en"
+DEFAULT_DEEPGRAM_VOICE = "Kelsey"
 
 _AUDIO_TYPES = {
     "aac": "audio/aac",
@@ -194,13 +197,152 @@ def _sync_groq_tts(
     return audio_bytes, content_type
 
 
-async def _async_deepgram_tts(text: str, audio_format: str = "wav") -> tuple[bytes, str]:
+MAX_DEEPGRAM_CHARS = 800
+
+
+def combine_wav_bytes(wav_chunks: list[bytes]) -> bytes:
+    """Concatenate multiple valid WAV audio byte sequences into one valid WAV file."""
+    if not wav_chunks:
+        return b""
+    if len(wav_chunks) == 1:
+        return wav_chunks[0]
+
+    out_io = io.BytesIO()
+    try:
+        with wave.open(io.BytesIO(wav_chunks[0]), "rb") as first_wav:
+            params = first_wav.getparams()
+
+        with wave.open(out_io, "wb") as out_wav:
+            out_wav.setparams(params)
+            for chunk in wav_chunks:
+                with wave.open(io.BytesIO(chunk), "rb") as w:
+                    out_wav.writeframes(w.readframes(w.getnframes()))
+
+        return out_io.getvalue()
+    except Exception as exc:
+        logger.warning("[TTS] Error combining WAV chunks with wave module: %s; using binary fallback", exc)
+        return b"".join(wav_chunks)
+
+
+def split_into_sentences(text: str) -> list[str]:
+    """Split text into sentences while preserving trailing punctuation and list numbers."""
+    stripped = text.strip()
+    if not stripped:
+        return []
+
+    # Protect abbreviations, decimals, and list dots before splitting
+    p = re.sub(r'(\d)\.(\d)', r'\1<DECIMAL_DOT>\2', stripped)
+    p = re.sub(r'\b(Dr|Mr|Mrs|Ms|Prof|Sr|Jr|vs|etc|i\.e|e\.g)\.', r'\1<ABBREV_DOT>', p, flags=re.IGNORECASE)
+    p = re.sub(r'(^|\n)\s*(\d+)\.', r'\1\2<LIST_DOT>', p)
+    raw = re.split(r'(?<=[.!?])\s+|\n+', p)
+    sentences = [
+        r.replace('<DECIMAL_DOT>', '.').replace('<ABBREV_DOT>', '.').replace('<LIST_DOT>', '.').strip()
+        for r in raw
+        if r.strip()
+    ]
+    return sentences or [stripped]
+
+
+def chunk_text_by_sentences(text: str, max_chars: int = MAX_DEEPGRAM_CHARS) -> list[str]:
+    """Split text into sentence-bounded chunks that do not exceed max_chars,
+    preserving punctuation and sentence completeness without duplication or omission.
+    """
+    stripped = text.strip()
+    if len(stripped) <= max_chars:
+        return [stripped]
+
+    sentences = split_into_sentences(stripped)
+    chunks: list[str] = []
+    current_chunk = ""
+
+    for sentence in sentences:
+        if len(sentence) > max_chars:
+            if current_chunk:
+                chunks.append(current_chunk)
+                current_chunk = ""
+            clause_parts = re.split(r'(?<=[,;])\s+', sentence)
+            sub_chunk = ""
+            for part in clause_parts:
+                part = part.strip()
+                if not part:
+                    continue
+                if len(part) > max_chars:
+                    if sub_chunk:
+                        chunks.append(sub_chunk)
+                        sub_chunk = ""
+                    words = part.split()
+                    w_chunk = ""
+                    for word in words:
+                        if not w_chunk:
+                            w_chunk = word
+                        elif len(w_chunk) + len(word) + 1 <= max_chars:
+                            w_chunk += " " + word
+                        else:
+                            chunks.append(w_chunk)
+                            w_chunk = word
+                    if w_chunk:
+                        sub_chunk = w_chunk
+                elif not sub_chunk:
+                    sub_chunk = part
+                elif len(sub_chunk) + len(part) + 1 <= max_chars:
+                    sub_chunk += " " + part
+                else:
+                    chunks.append(sub_chunk)
+                    sub_chunk = part
+            if sub_chunk:
+                current_chunk = sub_chunk
+        elif not current_chunk:
+            current_chunk = sentence
+        elif len(current_chunk) + len(sentence) + 1 <= max_chars:
+            current_chunk += " " + sentence
+        else:
+            chunks.append(current_chunk)
+            current_chunk = sentence
+
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    return chunks or [stripped]
+
+
+def _get_deepgram_endpoint_and_model(voice_setting: str) -> tuple[str, str]:
+    """Map voice setting (e.g. 'Kelsey', 'flux-kelsey-en', 'aura-asteria-en') to the correct Deepgram endpoint and model."""
+    v = voice_setting.strip()
+    lowered = v.lower()
+    if lowered in ("kelsey", "flux-kelsey-en", "aura-kelsey-en", "aura-2-kelsey-en"):
+        return "https://api.deepgram.com/v2/speak", "flux-kelsey-en"
+    if lowered in ("meena", "flux-meena-en", "aura-meena-en", "aura-2-meena-en"):
+        return "https://api.deepgram.com/v2/speak", "flux-meena-en"
+    if lowered.startswith("flux-") or lowered.startswith("aura-2-"):
+        return "https://api.deepgram.com/v2/speak", lowered
+    return "https://api.deepgram.com/v1/speak", v
+
+
+_shared_async_client: httpx.AsyncClient | None = None
+
+
+def get_shared_async_client() -> httpx.AsyncClient:
+    global _shared_async_client
+    if _shared_async_client is None or _shared_async_client.is_closed:
+        _shared_async_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(45.0, connect=5.0),
+            limits=httpx.Limits(max_keepalive_connections=10, max_connections=20, keepalive_expiry=60.0),
+        )
+    return _shared_async_client
+
+
+async def _async_deepgram_tts_single(
+    text: str,
+    audio_format: str = "wav",
+    client: httpx.AsyncClient | None = None,
+) -> tuple[bytes, str]:
     api_key = os.getenv("DEEPGRAM_API_KEY")
     if not api_key:
         raise TextToSpeechError("DEEPGRAM_API_KEY is not configured.")
-    voice = os.getenv("DEEPGRAM_TTS_VOICE", DEFAULT_DEEPGRAM_VOICE)
+    configured_voice = os.getenv("DEEPGRAM_TTS_VOICE", DEFAULT_DEEPGRAM_VOICE)
+    base_url, model = _get_deepgram_endpoint_and_model(configured_voice)
 
-    url = f"https://api.deepgram.com/v1/speak?model={voice}"
+    url = f"{base_url}?model={model}"
     if audio_format == "wav":
         url += "&container=wav&encoding=linear16"
 
@@ -208,17 +350,36 @@ async def _async_deepgram_tts(text: str, audio_format: str = "wav") -> tuple[byt
         "Authorization": f"Token {api_key}",
         "Content-Type": "application/json",
     }
-    logger.info("[TTS] Provider: Deepgram Aura (voice=%s, format=%s, text length=%d)", voice, audio_format, len(text))
-    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
+    logger.info(
+        "[TTS] Provider: Deepgram (model=%s, voice=%s, format=%s, text length=%d)",
+        model,
+        configured_voice,
+        audio_format,
+        len(text),
+    )
+
+    should_close = False
+    if client is None:
+        client = get_shared_async_client()
+        should_close = False
+
+    t_dg_start = time.perf_counter()
+    try:
         response = await client.post(url, headers=headers, json={"text": text})
+    finally:
+        if should_close:
+            await client.aclose()
+    dg_ms = (time.perf_counter() - t_dg_start) * 1000
+    logger.info("[TTS-TIMING] Deepgram request completed in %.1fms (status=%d, %d bytes)", dg_ms, response.status_code, len(response.content))
 
     if not response.is_success:
+        sanitized_err = _sanitize_log_message(response.text)
         logger.warning(
             "[TTS] Deepgram returned HTTP %d: %s",
             response.status_code,
-            _sanitize_log_message(response.text[:200]),
+            sanitized_err,
         )
-        raise TTSUpstreamError(f"Deepgram TTS request failed with status {response.status_code}.")
+        raise TTSUpstreamError(f"Deepgram TTS request failed with status {response.status_code}: {sanitized_err}")
 
     audio_bytes = response.content
     if not audio_bytes:
@@ -228,40 +389,145 @@ async def _async_deepgram_tts(text: str, audio_format: str = "wav") -> tuple[byt
     if not content_type or not content_type.startswith("audio/"):
         content_type = "audio/wav" if audio_format == "wav" else "audio/mpeg"
 
-    logger.info("[TTS] Audio generated successfully using Deepgram (%d bytes, %s).", len(audio_bytes), content_type)
+    return audio_bytes, content_type
+
+
+async def _async_deepgram_tts(text: str, audio_format: str = "wav") -> tuple[bytes, str]:
+    chunks = chunk_text_by_sentences(text, max_chars=MAX_DEEPGRAM_CHARS)
+    if len(chunks) == 1:
+        audio_bytes, content_type = await _async_deepgram_tts_single(chunks[0], audio_format=audio_format)
+        logger.info("[TTS] Audio generated successfully using Deepgram (%d bytes, %s).", len(audio_bytes), content_type)
+        return audio_bytes, content_type
+
+    logger.info(
+        "[TTS] Text length (%d chars) exceeds threshold (%d chars). Splitting into %d sentence chunks.",
+        len(text),
+        MAX_DEEPGRAM_CHARS,
+        len(chunks),
+    )
+
+    audio_chunks: list[bytes] = []
+    final_content_type = "audio/wav" if audio_format == "wav" else "audio/mpeg"
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(45.0, connect=5.0)) as client:
+        for idx, chunk in enumerate(chunks):
+            logger.info("[TTS] Processing Deepgram chunk %d/%d (%d chars)", idx + 1, len(chunks), len(chunk))
+            try:
+                chunk_audio, ctype = await _async_deepgram_tts_single(chunk, audio_format=audio_format, client=client)
+            except Exception as chunk_err:
+                logger.error("[TTS] Failed synthesizing Deepgram chunk %d/%d (%d chars): %s", idx + 1, len(chunks), len(chunk), chunk_err)
+                raise
+            audio_chunks.append(chunk_audio)
+            final_content_type = ctype
+
+    if audio_format == "wav":
+        combined_audio = combine_wav_bytes(audio_chunks)
+    else:
+        combined_audio = b"".join(audio_chunks)
+
+    logger.info(
+        "[TTS] Audio generated successfully using Deepgram (%d chunks merged into %d bytes, %s).",
+        len(audio_chunks),
+        len(combined_audio),
+        final_content_type,
+    )
+    return combined_audio, final_content_type
+
+
+def _sync_deepgram_tts_single(
+    text: str,
+    audio_format: str = "wav",
+    client: httpx.Client | None = None,
+) -> tuple[bytes, str]:
+    api_key = os.getenv("DEEPGRAM_API_KEY")
+    if not api_key:
+        raise TextToSpeechError("DEEPGRAM_API_KEY is not configured.")
+    configured_voice = os.getenv("DEEPGRAM_TTS_VOICE", DEFAULT_DEEPGRAM_VOICE)
+    base_url, model = _get_deepgram_endpoint_and_model(configured_voice)
+
+    url = f"{base_url}?model={model}"
+    if audio_format == "wav":
+        url += "&container=wav&encoding=linear16"
+    headers = {
+        "Authorization": f"Token {api_key}",
+        "Content-Type": "application/json",
+    }
+    logger.info(
+        "[TTS] Provider: Deepgram (model=%s, voice=%s, format=%s, text length=%d)",
+        model,
+        configured_voice,
+        audio_format,
+        len(text),
+    )
+
+    should_close = False
+    if client is None:
+        client = httpx.Client(timeout=httpx.Timeout(45.0, connect=5.0))
+        should_close = True
+
+    try:
+        response = client.post(url, headers=headers, json={"text": text})
+    finally:
+        if should_close:
+            client.close()
+
+    if not response.is_success:
+        sanitized_err = _sanitize_log_message(response.text)
+        logger.warning(
+            "[TTS] Deepgram returned HTTP %d: %s",
+            response.status_code,
+            sanitized_err,
+        )
+        raise TTSUpstreamError(f"Deepgram TTS request failed with status {response.status_code}: {sanitized_err}")
+    audio_bytes = response.content
+    if not audio_bytes:
+        raise TTSUpstreamError("Deepgram TTS returned empty audio.")
+    content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if not content_type or not content_type.startswith("audio/"):
+        content_type = "audio/wav" if audio_format == "wav" else "audio/mpeg"
     return audio_bytes, content_type
 
 
 def _sync_deepgram_tts(text: str, audio_format: str = "wav") -> tuple[bytes, str]:
-    api_key = os.getenv("DEEPGRAM_API_KEY")
-    if not api_key:
-        raise TextToSpeechError("DEEPGRAM_API_KEY is not configured.")
-    voice = os.getenv("DEEPGRAM_TTS_VOICE", DEFAULT_DEEPGRAM_VOICE)
-    url = f"https://api.deepgram.com/v1/speak?model={voice}"
+    chunks = chunk_text_by_sentences(text, max_chars=MAX_DEEPGRAM_CHARS)
+    if len(chunks) == 1:
+        audio_bytes, content_type = _sync_deepgram_tts_single(chunks[0], audio_format=audio_format)
+        logger.info("[TTS] Audio generated successfully using Deepgram (%d bytes, %s).", len(audio_bytes), content_type)
+        return audio_bytes, content_type
+
+    logger.info(
+        "[TTS] Text length (%d chars) exceeds threshold (%d chars). Splitting into %d sentence chunks.",
+        len(text),
+        MAX_DEEPGRAM_CHARS,
+        len(chunks),
+    )
+
+    audio_chunks: list[bytes] = []
+    final_content_type = "audio/wav" if audio_format == "wav" else "audio/mpeg"
+
+    with httpx.Client(timeout=httpx.Timeout(45.0, connect=5.0)) as client:
+        for idx, chunk in enumerate(chunks):
+            logger.info("[TTS] Processing Deepgram chunk %d/%d (%d chars)", idx + 1, len(chunks), len(chunk))
+            try:
+                chunk_audio, ctype = _sync_deepgram_tts_single(chunk, audio_format=audio_format, client=client)
+            except Exception as chunk_err:
+                logger.error("[TTS] Failed synthesizing Deepgram chunk %d/%d (%d chars): %s", idx + 1, len(chunks), len(chunk), chunk_err)
+                raise
+            audio_chunks.append(chunk_audio)
+            final_content_type = ctype
+
     if audio_format == "wav":
-        url += "&container=wav&encoding=linear16"
-    headers = {
-        "Authorization": f"Token {api_key}",
-        "Content-Type": "application/json",
-    }
-    logger.info("[TTS] Provider: Deepgram Aura (voice=%s, format=%s, text length=%d)", voice, audio_format, len(text))
-    with httpx.Client(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
-        response = client.post(url, headers=headers, json={"text": text})
-    if not response.is_success:
-        logger.warning(
-            "[TTS] Deepgram returned HTTP %d: %s",
-            response.status_code,
-            _sanitize_log_message(response.text[:200]),
-        )
-        raise TTSUpstreamError(f"Deepgram TTS request failed with status {response.status_code}.")
-    audio_bytes = response.content
-    if not audio_bytes:
-        raise TTSUpstreamError("Deepgram TTS returned empty audio.")
-    content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    if not content_type or not content_type.startswith("audio/"):
-        content_type = "audio/wav" if audio_format == "wav" else "audio/mpeg"
-    logger.info("[TTS] Audio generated successfully using Deepgram (%d bytes, %s).", len(audio_bytes), content_type)
-    return audio_bytes, content_type
+        combined_audio = combine_wav_bytes(audio_chunks)
+    else:
+        combined_audio = b"".join(audio_chunks)
+
+    logger.info(
+        "[TTS] Audio generated successfully using Deepgram (%d chunks merged into %d bytes, %s).",
+        len(audio_chunks),
+        len(combined_audio),
+        final_content_type,
+    )
+    return combined_audio, final_content_type
 
 
 def _map_tts_error(error: Exception | None, provider: str = "Groq") -> TextToSpeechError:

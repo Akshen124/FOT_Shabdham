@@ -17,13 +17,13 @@ import redis
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from groq import Groq, GroqError
 from pydantic import BaseModel
 from qdrant_client.http.exceptions import ResponseHandlingException
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from .agent import run_agent
+from .agent import run_agent, run_agent_stream
 from .entity_resolver import resolve_domain_entities
 from .rag import KnowledgeBase
 from .stt import InvalidAudioError, SpeechToTextService, STTTranscriptionError
@@ -313,13 +313,14 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type"],
+    allow_headers=["*"],
 )
 
 
 class ChatRequest(BaseModel):
     message: str
     session_id: str
+    stream: bool = False
 
 
 @app.get("/api/health")
@@ -454,7 +455,7 @@ async def _read_stt_audio(
 
 
 @app.post("/api/chat")
-async def chat_endpoint(request: ChatRequest) -> dict[str, str]:
+async def chat_endpoint(request: ChatRequest, raw_request: Request) -> Any:
     message = request.message
     session_id = request.session_id.strip()
     if not message.strip():
@@ -464,6 +465,96 @@ async def chat_endpoint(request: ChatRequest) -> dict[str, str]:
 
     session_prefix = (session_id[:6] + "...") if len(session_id) > 6 else "***"
     logger.info("[CHAT] Incoming request for session [%s] (message length: %d)", session_prefix, len(message))
+
+    is_stream = request.stream or "text/event-stream" in raw_request.headers.get("accept", "").lower()
+
+    if is_stream:
+        async def event_generator():
+            t_req_start = time.perf_counter()
+            first_token_time = None
+            first_sentence_time = None
+            full_answer_parts: list[str] = []
+
+            try:
+                client, model, knowledge_base, top_k = get_backend()
+                memory_history = _load_conversation_memory(session_id)
+                resolution = resolve_domain_entities(message)
+                rewritten_question = _rewrite_follow_up_question(
+                    resolution.corrected_transcript,
+                    memory_history,
+                )
+                messages_for_agent = memory_history + [{"role": "user", "content": rewritten_question}]
+
+                def on_first_token(latency_ms: float):
+                    nonlocal first_token_time
+                    first_token_time = latency_ms
+
+                sentence_idx = 0
+                for sentence in run_agent_stream(
+                    client,
+                    model,
+                    messages_for_agent,
+                    knowledge_base=knowledge_base,
+                    top_k=top_k,
+                    on_first_token=on_first_token,
+                ):
+                    if first_sentence_time is None:
+                        first_sentence_time = (time.perf_counter() - t_req_start) * 1000
+                        logger.info("[CHAT-TIMING] First complete sentence ready in %.1fms", first_sentence_time)
+
+                    full_answer_parts.append(sentence)
+                    payload = {
+                        "type": "sentence",
+                        "text": sentence,
+                        "index": sentence_idx,
+                        "first_token_ms": round(first_token_time, 1) if first_token_time is not None else None,
+                        "first_sentence_ms": round(first_sentence_time, 1) if first_sentence_time is not None else None,
+                    }
+                    sentence_idx += 1
+                    yield f"event: sentence\ndata: {json.dumps(payload)}\n\n"
+
+                full_answer = " ".join(full_answer_parts).strip()
+                total_llm_ms = (time.perf_counter() - t_req_start) * 1000
+                logger.info(
+                    "[CHAT-TIMING] Streaming complete in %.1fms (%d sentences, %d words, first_token=%.1fms, first_sentence=%.1fms)",
+                    total_llm_ms,
+                    sentence_idx,
+                    len(full_answer.split()),
+                    first_token_time or 0.0,
+                    first_sentence_time or total_llm_ms,
+                )
+
+                # Save conversation memory
+                updated_history = memory_history + [
+                    {"role": "user", "content": message},
+                    {"role": "assistant", "content": full_answer},
+                ]
+                _save_conversation_memory(session_id, updated_history)
+
+                done_payload = {
+                    "type": "done",
+                    "response": full_answer,
+                    "first_token_ms": round(first_token_time, 1) if first_token_time is not None else None,
+                    "first_sentence_ms": round(first_sentence_time, 1) if first_sentence_time is not None else None,
+                    "total_ms": round(total_llm_ms, 1),
+                }
+                yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
+
+            except Exception as error:
+                safe_tb = _format_safe_chat_traceback(error, message, session_id)
+                logger.error("[CHAT-STREAM] Error during streaming: %s\n%s", error, safe_tb)
+                err_payload = {"type": "error", "error": str(error)}
+                yield f"event: error\ndata: {json.dumps(err_payload)}\n\n"
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     t_req_start = time.perf_counter()
     stage = "backend initialization"

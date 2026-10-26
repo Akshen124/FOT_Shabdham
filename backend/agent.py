@@ -4,7 +4,7 @@ import math
 import operator
 import time
 from datetime import datetime
-from typing import Callable
+from typing import Callable, Generator
 from zoneinfo import ZoneInfo
 
 from .rag import (
@@ -13,7 +13,9 @@ from .rag import (
     build_context,
     expand_query_for_retrieval,
     generate_answer,
+    generate_answer_stream,
     generate_kb_discovery_answer,
+    generate_kb_discovery_answer_stream,
     get_similarity_threshold,
     has_domain_affinity,
     is_basic_conversation,
@@ -21,9 +23,10 @@ from .rag import (
     is_unrelated_factual_or_math,
     rag_debug_log,
 )
+from .tts import split_into_sentences
 
 
-SYSTEM_PROMPT = """You are a helpful assistant. Use the knowledge-base search for questions about the user's documents. Use the calculator for arithmetic and the current-time tool for date or time questions. For time questions, use UTC unless the user gives a location or timezone. Do not expose internal retrieval details in user-facing answers."""
+SYSTEM_PROMPT = """You are a helpful assistant. Keep normal responses concise: strictly target 20–40 words, using 1–3 short sentences, unless the user explicitly requests more detail. Use the knowledge-base search for questions about the user's documents. Use the calculator for arithmetic and the current-time tool for date or time questions. For time questions, use UTC unless the user gives a location or timezone. Do not expose internal retrieval details in user-facing answers."""
 MAX_TOOL_ROUNDS = 5
 
 TOOLS = [
@@ -219,4 +222,93 @@ def run_agent(
     ]
     return generate_answer(
         client, model, original_query, context, history=history
+    )
+
+
+def run_agent_stream(
+    client,
+    model: str,
+    messages: list[dict[str, str]],
+    knowledge_base=None,
+    top_k: int = 5,
+    on_first_token: Callable[[float], None] | None = None,
+) -> Generator[str, None, None]:
+    """Execute agent pipeline yielding complete, natural sentences as soon as they become available."""
+    original_query = next(
+        (
+            message["content"]
+            for message in reversed(messages)
+            if message.get("role") == "user"
+        ),
+        "",
+    ).strip()
+    rag_debug_log(f"Incoming user question (stream): {original_query}")
+
+    # Stage 1: Fast Intent Classification
+    is_conv, conv_reply = is_basic_conversation(original_query)
+    if is_conv and conv_reply:
+        rag_debug_log(f"Stage 1 basic conversation: {conv_reply}")
+        for s in split_into_sentences(conv_reply):
+            yield s
+        return
+
+    if is_kb_discovery(original_query):
+        rag_debug_log("Stage 1 knowledge base discovery request.")
+        if knowledge_base is None:
+            yield "The knowledge base is currently unavailable."
+            return
+        overview_context = knowledge_base.get_knowledge_base_overview()
+        yield from generate_kb_discovery_answer_stream(
+            client, model, overview_context, on_first_token=on_first_token
+        )
+        return
+
+    if is_unrelated_factual_or_math(original_query):
+        rag_debug_log("Stage 1 unrelated math/calculation detected -> Refusing.")
+        yield UNRELATED_REFUSAL_ANSWER
+        return
+
+    # Stage 2: Knowledge Base Retrieval & Relevance Evaluation
+    if knowledge_base is None:
+        yield NOT_AVAILABLE_ANSWER
+        return
+
+    expanded_query = expand_query_for_retrieval(original_query)
+    rag_debug_log(
+        f"Stage 2 query normalization/expansion: '{original_query}' -> '{expanded_query}'"
+    )
+
+    queries = [original_query]
+    if expanded_query != original_query:
+        queries.append(expanded_query)
+
+    documents = knowledge_base.retrieve_multi_query(queries, limit=top_k)
+
+    threshold = get_similarity_threshold()
+    max_score = max(
+        (d["score"] for d in documents if d.get("score") is not None),
+        default=0.0,
+    )
+    has_domain = has_domain_affinity(original_query)
+    rag_debug_log(
+        f"Stage 2 relevance check: max_score={max_score:.4f}, threshold={threshold}, has_domain={has_domain}"
+    )
+
+    if (not documents or max_score < threshold) and not has_domain:
+        rag_debug_log("Stage 2 low relevance and no domain affinity -> Refusing.")
+        yield UNRELATED_REFUSAL_ANSWER
+        return
+
+    context = build_context(documents)
+    if not context.strip():
+        yield NOT_AVAILABLE_ANSWER
+        return
+
+    history = [
+        message
+        for message in messages[:-1]
+        if message.get("role") in {"user", "assistant"}
+    ]
+    yield from generate_answer_stream(
+        client, model, original_query, context, history=history, on_first_token=on_first_token
     )

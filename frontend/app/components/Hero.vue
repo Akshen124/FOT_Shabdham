@@ -62,11 +62,11 @@
             class="hero__input"
             type="text"
             placeholder="Enter your request"
-            :disabled="isThinking"
+            :disabled="isThinking || isSpeaking"
             aria-label="Type your message"
           />
-          <button v-if="!isThinking" class="hero__send" type="submit" :disabled="!input.trim()" aria-label="Send message">Send</button>
-          <button v-if="isThinking" class="hero__stop" type="button" @click="stopProcessing" aria-label="Stop generation">
+          <button v-if="!isThinking && !isSpeaking" class="hero__send" type="submit" :disabled="!input.trim()" aria-label="Send message">Send</button>
+          <button v-if="isThinking || isSpeaking" class="hero__stop" type="button" @click="stopProcessing" aria-label="Stop generation">
             <!-- Simple stop square icon -->
             
             Stop
@@ -80,7 +80,7 @@
             :processing="isThinking"
             :speaking="isSpeaking"
             :error="Boolean(displayVoiceError)"
-            :disabled="isThinking"
+            :disabled="isThinking || isSpeaking"
             @click="toggleVoiceInput"
           />
           <p v-if="displayVoiceError" class="hero__voice-error">
@@ -109,10 +109,10 @@ import { useSpeechRecognition } from '~/composables/useSpeechRecognition'
 
 const suggestions = [
   'What about GenLab',
+  'Drop a quick word about GenLab',
+  'Discover GenLab culture',
   'Services',
-  'Drop a quick word',
-  'Discover our culture',
-  'Write us: info@genlab.com',
+ 
 ]
 
 const scrollAreaRef = ref<HTMLDivElement | null>(null)

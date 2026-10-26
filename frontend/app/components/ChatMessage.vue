@@ -33,31 +33,45 @@ function clearTyping() {
   typingDone.value = true
 }
 
-function startTyping() {
-  displayedText.value = ''
-  typingDone.value = false
-  typingIndex = 0
+function typeChar() {
+  if (typingTimer) {
+    clearTimeout(typingTimer)
+    typingTimer = null
+  }
   const full = props.text
-  const speed = 30 // ms per char, can tweak
-  const typeChar = () => {
+  const speed = 25
+  const step = () => {
     if (typingIndex < full.length) {
       displayedText.value += full.charAt(typingIndex)
       typingIndex++
-      typingTimer = setTimeout(typeChar, speed)
+      typingTimer = setTimeout(step, speed)
     } else {
       typingDone.value = true
     }
   }
+  step()
+}
+
+function startTyping() {
+  displayedText.value = ''
+  typingDone.value = false
+  typingIndex = 0
   typeChar()
 }
 
 watch(
   () => props.text,
   (newVal, oldVal) => {
-    clearTyping()
     if (props.role === 'assistant') {
-      startTyping()
+      if (oldVal && newVal.startsWith(oldVal) && typingIndex <= newVal.length) {
+        typingDone.value = false
+        typeChar()
+      } else {
+        clearTyping()
+        startTyping()
+      }
     } else {
+      clearTyping()
       displayedText.value = newVal
       typingDone.value = true
     }
