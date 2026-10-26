@@ -6,6 +6,8 @@ import {
   queueAudioSentence,
   markAudioAllReceived,
   stopAudioPlayback,
+  hasAudioPendingRequests,
+  hasPlayableAudio,
 } from '~/services/chatService'
 
 export interface ChatMessage {
@@ -71,8 +73,16 @@ export function useChat() {
     let sentenceCount = 0
 
     const revealText = (isTtsError = false) => {
-      if (hasRevealedText) return
       if (currentRequestId !== activeRequestId) return // Stale audio or cancelled turn
+
+      // If text is already revealed, update warning state if audio playback starts
+      if (hasRevealedText) {
+        if (!isTtsError && ttsWarning.value) {
+          console.info('[TTS] Warning cleared: audio playback started successfully, hiding error warning')
+          ttsWarning.value = null
+        }
+        return
+      }
 
       hasRevealedText = true
 
@@ -91,10 +101,13 @@ export function useChat() {
       if (isTtsError) {
         console.warn('[TTS] Audio playback failed or unavailable; showing fallback warning')
         ttsWarning.value = 'Voice response unavailable.'
+      } else if (ttsWarning.value) {
+        console.info('[TTS] Warning cleared: audio playback started successfully, hiding error warning')
+        ttsWarning.value = null
       }
     }
 
-    // Initialize audio queue pipeline with playback start & error callbacks
+    // Initialize audio queue pipeline with playback start, complete & error callbacks
     startAudioPipeline(
       requestStartTime,
       (speaking) => {
@@ -103,13 +116,26 @@ export function useChat() {
         }
       },
       () => {
-        // Audio playback actually started! Reveal text now.
+        // Audio playback actually started!
+        console.info('[TTS] Playback started: audio playback has begun')
+        if (ttsWarning.value) {
+          console.info('[TTS] Warning cleared: audio playback started successfully, hiding error warning')
+          ttsWarning.value = null
+        }
         revealText(false)
       },
       (err) => {
-        // TTS synthesis or playback failed. Reveal text anyway with warning.
-        console.error('[TTS] Audio pipeline error:', err)
+        // Genuine terminal failure: all sentence chunks finished processing and no playable audio
+        console.error('[TTS] TTS request failed: all audio attempts failed:', err)
         revealText(true)
+      },
+      () => {
+        // All audio playback completed
+        console.info('[TTS] Playback completed: audio finished successfully')
+        if (ttsWarning.value) {
+          console.info('[TTS] Warning cleared: audio playback completed, ensuring no error warning')
+          ttsWarning.value = null
+        }
       },
     )
 
@@ -156,8 +182,17 @@ export function useChat() {
             await playResponseAudio(
               cleaned,
               apiBase,
-              () => revealText(false),
-              () => revealText(true),
+              () => {
+                if (ttsWarning.value) {
+                  console.info('[TTS] Warning cleared: fallback audio started successfully')
+                  ttsWarning.value = null
+                }
+                revealText(false)
+              },
+              () => {
+                console.error('[TTS] TTS request failed: fallback audio playback failed')
+                revealText(true)
+              },
               (speaking) => {
                 if (currentRequestId === activeRequestId) {
                   isSpeaking.value = speaking
@@ -173,12 +208,24 @@ export function useChat() {
         }
       }
 
-      // Safety timeout: if neither audio start nor error fired within 8s of LLM finishing
+      // Safety timeout: if audio has not started within 8s of LLM completion
       if (!hasRevealedText && currentRequestId === activeRequestId) {
         safetyTimer = setTimeout(() => {
-          if (!hasRevealedText && currentRequestId === activeRequestId) {
-            console.warn('[TTS] Safety timeout reached; revealing text now')
-            revealText(true)
+          if (currentRequestId !== activeRequestId) return
+          const isPending = hasAudioPendingRequests()
+          console.warn(
+            `[TTS] Timeout triggered after 8s of LLM completion. TTS requests pending: ${isPending}`
+          )
+
+          // Reveal the text answer so user can read without waiting indefinitely
+          if (!hasRevealedText) {
+            revealText(false)
+          }
+
+          // Do NOT mark voice as failed while TTS requests are still active in-flight!
+          if (!isPending && !isSpeaking.value && !hasPlayableAudio()) {
+            console.error('[TTS] TTS request failed: timeout expired with no pending requests and no playable audio.')
+            ttsWarning.value = 'Voice response unavailable.'
           }
         }, 8000)
       }

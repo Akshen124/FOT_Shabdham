@@ -81,6 +81,7 @@ class AudioQueueManager {
   private currentAudioUrl: string | null = null
   private onSpeakingChange?: (isSpeaking: boolean) => void
   private onPlaybackStart?: () => void
+  private onPlaybackComplete?: () => void
   private onPlaybackError?: (error: any) => void
   private playbackStartedFired: boolean = false
   private allSentencesReceived: boolean = false
@@ -93,6 +94,7 @@ class AudioQueueManager {
     onSpeakingChange?: (isSpeaking: boolean) => void,
     onPlaybackStart?: () => void,
     onPlaybackError?: (error: any) => void,
+    onPlaybackComplete?: () => void,
   ): Promise<void> {
     this.stop()
     this.activePipelineId = Date.now() + Math.random()
@@ -100,6 +102,7 @@ class AudioQueueManager {
     this.onSpeakingChange = onSpeakingChange
     this.onPlaybackStart = onPlaybackStart
     this.onPlaybackError = onPlaybackError
+    this.onPlaybackComplete = onPlaybackComplete
     this.playbackStartedFired = false
     this.ttsAbortController = new AbortController()
     this.chunks.clear()
@@ -111,6 +114,21 @@ class AudioQueueManager {
     return new Promise<void>((resolve) => {
       this.playbackDoneResolve = resolve
     })
+  }
+
+  hasPendingRequests(): boolean {
+    if (!this.allSentencesReceived) return true
+    for (const chunk of this.chunks.values()) {
+      if (!chunk.ready) return true
+    }
+    return false
+  }
+
+  hasPlayableAudio(): boolean {
+    for (const chunk of this.chunks.values()) {
+      if (chunk.ready && !chunk.error && chunk.audioUrl) return true
+    }
+    return false
   }
 
   queueSentence(sentence: string, index: number, apiBase: string): void {
@@ -126,9 +144,21 @@ class AudioQueueManager {
 
     const ttsUrl = `${apiBase.replace(/\/+$/, '')}/api/tts`
     const t0 = performance.now()
-    console.info(`[TIMING-TTS] Sentence ${index} TTS fetch requested at +${(t0 - this.requestStartTime).toFixed(1)}ms: "${cleanSentence.slice(0, 50)}..."`)
+    console.info(
+      `[TTS] TTS request pending: Sentence ${index} ("${cleanSentence.slice(0, 45)}...") fetch initiated at +${(t0 - this.requestStartTime).toFixed(1)}ms`
+    )
 
     chunk.fetchPromise = (async () => {
+      const chunkAbortController = new AbortController()
+      const fetchTimeoutId = setTimeout(() => {
+        chunkAbortController.abort(new Error(`TTS fetch timed out after 25s for sentence ${index}`))
+      }, 25000)
+
+      const onParentAbort = () => chunkAbortController.abort()
+      if (this.ttsAbortController) {
+        this.ttsAbortController.signal.addEventListener('abort', onParentAbort, { once: true })
+      }
+
       try {
         const resp = await fetch(ttsUrl, {
           method: 'POST',
@@ -137,7 +167,7 @@ class AudioQueueManager {
             Accept: 'audio/wav',
           },
           body: JSON.stringify({ text: cleanSentence }),
-          signal: this.ttsAbortController?.signal,
+          signal: chunkAbortController.signal,
         })
 
         if (!resp.ok) {
@@ -148,7 +178,7 @@ class AudioQueueManager {
         const blob = await resp.blob()
         const tFetch = performance.now()
         console.info(
-          `[TIMING-TTS] Sentence ${index} TTS audio received in ${(tFetch - t0).toFixed(1)}ms (${blob.size} bytes, +${(tFetch - this.requestStartTime).toFixed(1)}ms from start)`
+          `[TTS] TTS request completed: Sentence ${index} audio received in ${(tFetch - t0).toFixed(1)}ms (${blob.size} bytes, +${(tFetch - this.requestStartTime).toFixed(1)}ms from start)`
         )
 
         if (this.activePipelineId !== pipelineId) {
@@ -161,15 +191,17 @@ class AudioQueueManager {
 
         this.playNext()
       } catch (err: any) {
-        if (err?.name === 'AbortError') return
-        console.error(`[TIMING-TTS] Sentence ${index} TTS synthesis error:`, err)
+        if (err?.name === 'AbortError' && this.activePipelineId !== pipelineId) return
+        console.error(`[TTS] TTS request failed: Sentence ${index} synthesis error:`, err)
         chunk.error = err
         chunk.ready = true
-        if (index === 0 && !this.playbackStartedFired) {
-          this.playbackStartedFired = true
-          this.onPlaybackError?.(err)
-        }
+        // Do not prematurely mark terminal failure here; let playNext evaluate when all chunks finish
         this.playNext()
+      } finally {
+        clearTimeout(fetchTimeoutId)
+        if (this.ttsAbortController) {
+          this.ttsAbortController.signal.removeEventListener('abort', onParentAbort)
+        }
       }
     })()
 
@@ -189,12 +221,23 @@ class AudioQueueManager {
     const chunk = this.chunks.get(this.nextPlayIndex)
     if (!chunk) {
       if (this.allSentencesReceived && this.nextPlayIndex >= this.totalSentences) {
-        console.info('[TIMING-TTS] All sentences audio playback completed.')
-        this.onSpeakingChange?.(false)
-        if (!this.playbackStartedFired) {
+        const anyPending = Array.from(this.chunks.values()).some((c) => !c.ready)
+        if (anyPending) {
+          // Still waiting for remaining sentences to finish fetching
+          return
+        }
+
+        if (this.playbackStartedFired) {
+          console.info('[TTS] Playback completed: all queued sentences have finished playing.')
+          this.onSpeakingChange?.(false)
+          this.onPlaybackComplete?.()
+        } else {
+          // Terminal failure: all chunks completed and none were playable
+          console.error('[TTS] TTS request failed: all sentence chunks finished processing but no playable audio could be generated.')
           this.playbackStartedFired = true
           this.onPlaybackError?.(new Error('No playable audio generated'))
         }
+
         if (this.playbackDoneResolve) {
           this.playbackDoneResolve()
           this.playbackDoneResolve = null
@@ -205,11 +248,13 @@ class AudioQueueManager {
 
     if (!chunk.ready) {
       // Waiting for this chunk's audio fetch to arrive
+      console.info(`[TTS] TTS request pending: waiting for Sentence ${this.nextPlayIndex} audio fetch to complete...`)
       return
     }
 
     if (chunk.error || !chunk.audioUrl) {
-      // Skip failed chunk and continue to next
+      // Skip failed chunk and continue to next sentence
+      console.warn(`[TTS] Sentence ${this.nextPlayIndex} audio is unavailable; advancing to next chunk.`)
       this.nextPlayIndex++
       this.playNext()
       return
@@ -227,8 +272,7 @@ class AudioQueueManager {
     audio.onplay = () => {
       const tPlay = performance.now()
       console.info(
-        `[TIMING-TTS] >>> AUDIO PLAYBACK STARTED <<< for Sentence ${chunk.index} ("${chunk.text.slice(0, 35)}..."). ` +
-        `Actual elapsed from request: ${(tPlay - this.requestStartTime).toFixed(1)}ms`
+        `[TTS] Playback started: Sentence ${chunk.index} ("${chunk.text.slice(0, 35)}..."). Actual elapsed: ${(tPlay - this.requestStartTime).toFixed(1)}ms`
       )
       if (!this.playbackStartedFired) {
         this.playbackStartedFired = true
@@ -237,7 +281,7 @@ class AudioQueueManager {
     }
 
     audio.onended = () => {
-      console.info(`[TIMING-TTS] Sentence ${chunk.index} playback completed`)
+      console.info(`[TTS] Playback completed: Sentence ${chunk.index} playback finished.`)
       this.releaseCurrentAudio()
       this.isPlaying = false
       this.nextPlayIndex++
@@ -245,7 +289,7 @@ class AudioQueueManager {
     }
 
     audio.onerror = (err) => {
-      console.error(`[TIMING-TTS] Sentence ${chunk.index} audio playback error:`, err)
+      console.error(`[TTS] Sentence ${chunk.index} audio playback error:`, err)
       this.releaseCurrentAudio()
       this.isPlaying = false
       this.nextPlayIndex++
@@ -253,14 +297,10 @@ class AudioQueueManager {
     }
 
     audio.play().catch((err) => {
-      console.error(`[TIMING-TTS] audio.play() failed for sentence ${chunk.index}:`, err)
+      console.error(`[TTS] audio.play() failed for sentence ${chunk.index}:`, err)
       this.releaseCurrentAudio()
       this.isPlaying = false
       this.nextPlayIndex++
-      if (err?.name === 'NotAllowedError' && !this.playbackStartedFired) {
-        this.playbackStartedFired = true
-        this.onPlaybackError?.(err)
-      }
       this.playNext()
     })
   }
@@ -275,7 +315,7 @@ class AudioQueueManager {
     a.pause()
     try {
       a.currentTime = 0
-    } catch {}
+    } catch { }
     a.removeAttribute('src')
     a.load()
     if (u) URL.revokeObjectURL(u)
@@ -286,6 +326,7 @@ class AudioQueueManager {
   stop(): void {
     this.activePipelineId = Date.now() + Math.random()
     this.onPlaybackStart = undefined
+    this.onPlaybackComplete = undefined
     this.onPlaybackError = undefined
     if (this.ttsAbortController) {
       this.ttsAbortController.abort()
@@ -316,8 +357,17 @@ export function startAudioPipeline(
   onSpeakingChange?: (isSpeaking: boolean) => void,
   onPlaybackStart?: () => void,
   onPlaybackError?: (error: any) => void,
+  onPlaybackComplete?: () => void,
 ): Promise<void> {
-  return audioQueueManager.startPipeline(startTime, onSpeakingChange, onPlaybackStart, onPlaybackError)
+  return audioQueueManager.startPipeline(startTime, onSpeakingChange, onPlaybackStart, onPlaybackError, onPlaybackComplete)
+}
+
+export function hasAudioPendingRequests(): boolean {
+  return audioQueueManager.hasPendingRequests()
+}
+
+export function hasPlayableAudio(): boolean {
+  return audioQueueManager.hasPlayableAudio()
 }
 
 export function queueAudioSentence(
