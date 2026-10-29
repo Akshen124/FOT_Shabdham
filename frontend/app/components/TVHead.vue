@@ -9,6 +9,20 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { getAudioAmplitude } from '~/services/chatService'
+
+const props = withDefaults(
+  defineProps<{
+    speaking?: boolean
+    listening?: boolean
+    thinking?: boolean
+  }>(),
+  {
+    speaking: false,
+    listening: false,
+    thinking: false,
+  }
+)
 
 // ── State ──
 const containerRef = ref<HTMLDivElement | null>(null)
@@ -22,6 +36,16 @@ const emit = defineEmits<{
   (e: 'error', err: Error): void
   (e: 'started'): void
 }>()
+
+// ── Speech & State Animations ──
+let speechTime = 0
+let speechAmpCurrent = 0
+let speechNodX = 0
+let speechTiltZ = 0
+let speechYawY = 0
+let speakingWeight = 0
+let listeningWeight = 0
+let thinkingWeight = 0
 
 // ── Three.js variables ──
 let renderer: any = null
@@ -508,6 +532,9 @@ function updateScreen(elapsed: number, dt: number) {
   // ── Draw Living Glowing Eyes ──
   drawEyeScreen(ctx, w, h, elapsed, dt)
 
+  // ── Draw Cybernetic Digital Mouth / Voice Visualizer ──
+  drawDigitalMouth(ctx, w, h, elapsed, dt)
+
   // ── Glitch Distortion Overlay ──
   if (glitchActive) {
     drawGlitch(ctx, w, h)
@@ -522,8 +549,6 @@ function updateScreen(elapsed: number, dt: number) {
 
   screenTexture.needsUpdate = true
 }
-
-
 
 function drawEyeScreen(
   ctx: CanvasRenderingContext2D,
@@ -590,7 +615,7 @@ function drawEyeScreen(
 
   const leftEyeX = cx - eyeSpacing
   const rightEyeX = cx + eyeSpacing
-  const eyesY = cy
+  const eyesY = cy - 32
 
   // Draw Left Circular Eye
   drawSingleEye(
@@ -619,6 +644,142 @@ function drawEyeScreen(
   )
 }
 
+function drawDigitalMouth(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  elapsed: number,
+  dt: number
+) {
+  const cx = w / 2
+  const cy = h / 2
+  const mouthX = cx
+  const mouthY = cy + 150
+
+  ctx.save()
+
+  // 1. Speaking State (Animated cybernetic sound-reactive mouth in sync with audio amplitude)
+  if (speakingWeight > 0.02 || speechAmpCurrent > 0.03) {
+    const amp = speechAmpCurrent
+    const baseW = 54 + amp * 38
+    const baseH = Math.max(3.5, amp * 28)
+
+    // Ambient outer phosphor bloom
+    const mouthBloom = ctx.createRadialGradient(
+      mouthX,
+      mouthY,
+      baseH * 0.25,
+      mouthX,
+      mouthY,
+      baseW * 1.4
+    )
+    mouthBloom.addColorStop(0, 'rgba(255, 184, 77, 0.40)')
+    mouthBloom.addColorStop(0.42, 'rgba(255, 168, 52, 0.18)')
+    mouthBloom.addColorStop(1, 'rgba(0, 0, 0, 0)')
+
+    ctx.fillStyle = mouthBloom
+    ctx.beginPath()
+    ctx.ellipse(mouthX, mouthY, baseW * 1.3, baseH * 2.0, 0, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Outer glowing mouth aperture rim
+    ctx.shadowColor = '#ffa834'
+    ctx.shadowBlur = 14
+    ctx.fillStyle = 'rgba(255, 168, 52, 0.85)'
+    ctx.beginPath()
+    ctx.roundRect(mouthX - baseW / 2, mouthY - baseH / 2, baseW, baseH, [baseH / 2])
+    ctx.fill()
+    ctx.shadowBlur = 0
+
+    // Inner bright core
+    ctx.fillStyle = '#fffdf5'
+    ctx.beginPath()
+    const coreH = Math.max(2, baseH * 0.6)
+    const coreW = Math.max(10, baseW * 0.84)
+    ctx.roundRect(mouthX - coreW / 2, mouthY - coreH / 2, coreW, coreH, [coreH / 2])
+    ctx.fill()
+
+    // Dynamic frequency equalizer bars inside mouth when open
+    if (baseH > 7) {
+      const numBars = 5
+      const barSpacing = baseW / (numBars + 1)
+      ctx.fillStyle = '#ffa834'
+      for (let i = 1; i <= numBars; i++) {
+        const bx = mouthX - baseW / 2 + i * barSpacing
+        const distFromCenter = Math.abs(i - (numBars + 1) / 2)
+        const barAmp = Math.max(0.25, 1 - distFromCenter * 0.28)
+        const barH = (baseH - 4) * barAmp * (0.6 + 0.4 * Math.sin(elapsed * 18 + i * 1.4))
+        ctx.fillRect(bx - 1.5, mouthY - barH / 2, 3, barH)
+      }
+    }
+  }
+  // 2. Listening State (Attentive undulating audio listening ribbon)
+  else if (listeningWeight > 0.05) {
+    const waveW = 56
+    const alpha = listeningWeight
+
+    ctx.shadowColor = '#ffa834'
+    ctx.shadowBlur = 14
+    ctx.strokeStyle = `rgba(255, 196, 102, ${0.85 * alpha})`
+    ctx.lineWidth = 3
+    ctx.lineCap = 'round'
+
+    ctx.beginPath()
+    const points = 24
+    for (let i = 0; i <= points; i++) {
+      const px = mouthX - waveW / 2 + (i / points) * waveW
+      const normX = (i / points) * 2 - 1
+      const env = Math.cos(normX * (Math.PI / 2))
+      const py = mouthY + Math.sin(elapsed * 9 + i * 0.6) * 5.5 * env * alpha
+      if (i === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    }
+    ctx.stroke()
+    ctx.shadowBlur = 0
+  }
+  // 3. Thinking State (Subtle sequential pulsing data beads)
+  else if (thinkingWeight > 0.05) {
+    const beadSpacing = 16
+    const alpha = thinkingWeight
+    for (let i = -1; i <= 1; i++) {
+      const bx = mouthX + i * beadSpacing
+      const pulse = (Math.sin(elapsed * 6 - i * 1.2) + 1) / 2
+      const radius = 2.5 + pulse * 2.0
+
+      ctx.shadowColor = '#ffa834'
+      ctx.shadowBlur = 10 * pulse
+      ctx.fillStyle = `rgba(255, 204, 120, ${0.4 + 0.55 * pulse * alpha})`
+      ctx.beginPath()
+      ctx.arc(bx, mouthY, radius, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.shadowBlur = 0
+  }
+  // 4. Idle Resting State (Sleek luminous glowing amber seam)
+  else {
+    const breathe = Math.sin(elapsed * 1.5) * 0.35 + 0.65
+    const seamW = 44
+    const seamH = 2.5
+
+    // Soft resting bloom
+    ctx.fillStyle = `rgba(255, 168, 52, ${0.12 * breathe})`
+    ctx.beginPath()
+    ctx.ellipse(mouthX, mouthY, seamW * 0.8, seamH * 3, 0, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Luminous resting seam
+    ctx.shadowColor = '#ffa834'
+    ctx.shadowBlur = 8
+    ctx.fillStyle = `rgba(255, 196, 102, ${0.65 + 0.25 * breathe})`
+    ctx.beginPath()
+    ctx.roundRect(mouthX - seamW / 2, mouthY - seamH / 2, seamW, seamH, [seamH / 2])
+    ctx.fill()
+    ctx.shadowBlur = 0
+  }
+
+  ctx.restore()
+}
+
 function drawSingleEye(
   ctx: CanvasRenderingContext2D,
   eyeX: number,
@@ -630,18 +791,25 @@ function drawSingleEye(
   elapsed: number,
   isRight: boolean
 ) {
-  // Smooth vertical squash when blinking
-  const scaleY = Math.max(0.04, 1 - blinkProgress * 0.96)
-  const scaleX = (1 + blinkProgress * 0.08) * (1 / 1.125) // Aspect ratio compensation for 3D world space
+  // Speech micro-squint on high syllable amplitude (natural conversational expression)
+  const speechSquint = speakingWeight * speechAmpCurrent * 0.12
+  const effectiveBlink = Math.min(1, blinkProgress + speechSquint)
 
-  // Pointer tracking micro-shift
-  const cx = eyeX + pupilX * 0.35
-  const cy = eyeY + pupilY * 0.35
+  // Attentive listening dilation
+  const listenExpansion = listeningWeight * 0.05
+  const baseScaleY = Math.max(0.04, 1 - effectiveBlink * 0.96) * (1 + listenExpansion)
+  const baseScaleX = (1 + effectiveBlink * 0.08 + listenExpansion) * (1 / 1.125)
+  const scaleX = baseScaleX
+  const scaleY = baseScaleY
+
+  // Pointer tracking micro-shift (with subtle upward focus while thinking)
+  const cx = eyeX + pupilX * 0.35 - thinkingWeight * 2
+  const cy = eyeY + pupilY * 0.35 - thinkingWeight * 5
 
   // 1. Ambient Outer Halo Bloom (Luminous warm yellowish-orange diffuse emission)
   ctx.save()
   ctx.translate(cx, cy)
-  ctx.scale(1 / 1.125, 1)
+  ctx.scale(baseScaleX, baseScaleY)
   ctx.translate(-cx, -cy)
 
   const outerBloom = ctx.createRadialGradient(
@@ -665,7 +833,7 @@ function drawSingleEye(
   // 2. Transformed Glowing Light Orb with Blinking Squash
   ctx.save()
   ctx.translate(cx, cy)
-  ctx.scale(scaleX, scaleY)
+  ctx.scale(baseScaleX, baseScaleY)
   ctx.translate(-cx, -cy)
 
   // Warm Amber-Orange Chromatic Fringe on the Outer Rim
@@ -824,7 +992,53 @@ function animate() {
   const elapsed = clock.elapsedTime // property, doesn't consume delta
   const dt = Math.min(rawDt, 0.05)
 
-  // Update CRT screen texture
+  // ── Smooth State Transition Weights ──
+  listeningWeight += ((props.listening ? 1 : 0) - listeningWeight) * 0.08
+  thinkingWeight += ((props.thinking ? 1 : 0) - thinkingWeight) * 0.08
+  speakingWeight += ((props.speaking ? 1 : 0) - speakingWeight) * 0.14
+
+  // ── Speech Amplitude & Conversational Motion ──
+  let targetAmp = 0
+  if (props.speaking) {
+    speechTime += dt
+    const liveAmp = getAudioAmplitude()
+    // When Web Audio has live signal, use it; otherwise provide a natural multi-harmonic conversational rhythm
+    targetAmp = liveAmp > 0.04
+      ? liveAmp
+      : 0.22 + Math.sin(speechTime * 6.8) * 0.14 + Math.sin(speechTime * 2.3) * 0.08
+  } else {
+    speechTime = 0
+  }
+  // Smoothly track speech amplitude (snappy attack, smooth decay)
+  speechAmpCurrent += (targetAmp - speechAmpCurrent) * (targetAmp > speechAmpCurrent ? 0.30 : 0.15)
+
+  // Subtle conversational head nods, tilts, and yaw:
+  // Non-harmonic wave combinations prevent robotic repetition, modulated by live voice amplitude
+  const targetNod = props.speaking
+    ? (Math.sin(speechTime * 4.2) * 0.038 + Math.sin(speechTime * 2.1 + 0.4) * 0.022) * (0.35 + speechAmpCurrent * 0.65)
+    : 0
+  const targetTilt = props.speaking
+    ? (Math.sin(speechTime * 2.5 + 1.1) * 0.028 + Math.sin(speechTime * 1.2) * 0.016) * (0.30 + speechAmpCurrent * 0.70)
+    : 0
+  const targetYaw = props.speaking
+    ? Math.sin(speechTime * 1.6 + 0.8) * 0.020 * (0.30 + speechAmpCurrent * 0.70)
+    : 0
+
+  speechNodX += (targetNod - speechNodX) * 0.14
+  speechTiltZ += (targetTilt - speechTiltZ) * 0.12
+  speechYawY += (targetYaw - speechYawY) * 0.12
+
+  // Distinct attentive listening pose (slightly cocked head, attentive forward nod)
+  const listeningTilt = 0.070 * listeningWeight
+  const listeningNod = -0.040 * listeningWeight
+  const listeningYaw = 0.045 * listeningWeight
+
+  // Thoughtful thinking pose (slight upward tilt and inquisitive angle)
+  const thinkingNod = -0.045 * thinkingWeight
+  const thinkingYaw = -0.040 * thinkingWeight
+  const thinkingTilt = -0.025 * thinkingWeight
+
+  // Update CRT screen texture (eyes, digital mouth, glitch, CRT scanlines)
   updateScreen(elapsed, dt)
 
   if (!shabdamModel) {
@@ -841,24 +1055,26 @@ function animate() {
   currentRotX += (targetRotX - currentRotX) * 0.14
   currentRotY += (targetRotY - currentRotY) * 0.14
 
-  // ── Subtle Natural Idle Motion ──
+  // ── Subtle Natural Idle Motion & Speech Bounce ──
   let idleBodyY = 0
   let idleHeadRotZ = 0
   if (!prefersReducedMotion) {
-    idleBodyY = Math.sin(elapsed * 0.75) * 0.003
+    const speechBounce = props.speaking ? Math.sin(speechTime * 4.2) * 0.0020 * speechAmpCurrent : 0
+    idleBodyY = Math.sin(elapsed * 0.75) * 0.003 + speechBounce
     idleHeadRotZ = Math.sin(elapsed * 0.55 + 0.4) * 0.004
   }
 
   // 1. Skinned TV Head & Neck tracking
   if (headBone && initialHeadRot) {
-    headBone.rotation.x = initialHeadRot.x + currentRotX * 0.75
-    headBone.rotation.y = initialHeadRot.y + currentRotY * 0.85
-    headBone.rotation.z = initialHeadRot.z - currentRotY * 0.12 + idleHeadRotZ
+    headBone.rotation.x = initialHeadRot.x + currentRotX * 0.75 + speechNodX + listeningNod + thinkingNod
+    headBone.rotation.y = initialHeadRot.y + currentRotY * 0.85 + speechYawY + listeningYaw + thinkingYaw
+    headBone.rotation.z = initialHeadRot.z - currentRotY * 0.12 + idleHeadRotZ + speechTiltZ + listeningTilt + thinkingTilt
   }
 
   if (neck2Bone && initialNeck2Rot) {
-    neck2Bone.rotation.x = initialNeck2Rot.x + currentRotX * 0.20
-    neck2Bone.rotation.y = initialNeck2Rot.y + currentRotY * 0.25
+    neck2Bone.rotation.x = initialNeck2Rot.x + currentRotX * 0.20 + speechNodX * 0.35 + listeningNod * 0.35
+    neck2Bone.rotation.y = initialNeck2Rot.y + currentRotY * 0.25 + speechYawY * 0.35 + listeningYaw * 0.35
+    neck2Bone.rotation.z = initialNeck2Rot.z + speechTiltZ * 0.35 + listeningTilt * 0.35
   }
 
   // 2. Smooth Position & Scale Animation (Center -> Right Transition on Click)

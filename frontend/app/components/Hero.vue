@@ -15,6 +15,9 @@
       <ClientOnly>
         <TVHead
           ref="tvHeadRef"
+          :speaking="isSpeaking"
+          :listening="isListening"
+          :thinking="isThinking"
           @loaded="onModelLoaded"
           @error="onModelError"
           @started="onModelStarted"

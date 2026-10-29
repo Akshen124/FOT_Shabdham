@@ -14,6 +14,9 @@ export interface SendChatOptions {
 }
 
 let audioContext: AudioContext | null = null
+let analyserNode: AnalyserNode | null = null
+let currentMediaSource: MediaElementAudioSourceNode | null = null
+let freqDataArray: Uint8Array | null = null
 
 export function unlockAudioPlayback(): void {
   if (typeof window === 'undefined' || !window.AudioContext) {
@@ -25,6 +28,13 @@ export function unlockAudioPlayback(): void {
     audioContext = new AudioContext()
   }
 
+  if (!analyserNode) {
+    analyserNode = audioContext.createAnalyser()
+    analyserNode.fftSize = 128
+    analyserNode.smoothingTimeConstant = 0.65
+    freqDataArray = new Uint8Array(analyserNode.frequencyBinCount)
+  }
+
   if (audioContext.state === 'suspended') {
     void audioContext
       .resume()
@@ -33,6 +43,48 @@ export function unlockAudioPlayback(): void {
         console.error('[TTS] AudioContext unlock failed:', error)
       })
   }
+}
+
+export function bindAudioElementToAnalyser(audio: HTMLAudioElement): void {
+  try {
+    unlockAudioPlayback()
+    if (!audioContext || !analyserNode) return
+
+    unbindAudioElementFromAnalyser()
+
+    currentMediaSource = audioContext.createMediaElementSource(audio)
+    currentMediaSource.connect(analyserNode)
+    analyserNode.connect(audioContext.destination)
+  } catch (err) {
+    // If browser prevents createMediaElementSource on this instance, graceful fallback
+    console.debug('[TTS] Web Audio analyser binding:', err)
+  }
+}
+
+export function unbindAudioElementFromAnalyser(): void {
+  if (currentMediaSource) {
+    try {
+      currentMediaSource.disconnect()
+    } catch {}
+    currentMediaSource = null
+  }
+}
+
+export function getAudioAmplitude(): number {
+  if (analyserNode && freqDataArray && audioContext && audioContext.state === 'running') {
+    analyserNode.getByteFrequencyData(freqDataArray as any)
+    let sum = 0
+    const count = Math.min(24, freqDataArray.length)
+    for (let i = 0; i < count; i++) {
+      const val = freqDataArray[i] ?? 0
+      sum += val
+    }
+    const avg = sum / (count * 255)
+    if (avg > 0.03) {
+      return Math.min(1, Math.max(0, (avg - 0.03) / 0.42))
+    }
+  }
+  return 0
 }
 
 export function splitIntoSentences(text: string): string[] {
@@ -269,6 +321,8 @@ class AudioQueueManager {
     this.isPlaying = true
     this.onSpeakingChange?.(true)
 
+    bindAudioElementToAnalyser(audio)
+
     audio.onplay = () => {
       const tPlay = performance.now()
       console.info(
@@ -306,6 +360,7 @@ class AudioQueueManager {
   }
 
   private releaseCurrentAudio(): void {
+    unbindAudioElementFromAnalyser()
     if (!this.currentAudio) return
     const a = this.currentAudio
     const u = this.currentAudioUrl
@@ -325,6 +380,7 @@ class AudioQueueManager {
 
   stop(): void {
     this.activePipelineId = Date.now() + Math.random()
+    unbindAudioElementFromAnalyser()
     this.onPlaybackStart = undefined
     this.onPlaybackComplete = undefined
     this.onPlaybackError = undefined

@@ -159,12 +159,11 @@ onUnmounted(() => {
 
 /* Assistant message typography */
 .chat-message--assistant .chat-message__bubble p {
-  font-size: 1.625rem; /* ~26px */
-  line-height: 1.3;
+  font-size: clamp(0.875rem, 0.805rem + 0.175vw, 0.945rem);
+  line-height: 1.35;
   color: #0f172a;
   font-family: "HelveticaNowDisplay", 'Inter', sans-serif;
 }
-
 .caret {
   display: inline-block;
   width: 2px;
@@ -191,7 +190,7 @@ onUnmounted(() => {
   }
 
   .chat-message--assistant .chat-message__bubble p {
-    font-size: clamp(1.05rem, 4.4vw, 1.35rem);
+    font-size: clamp(0.925rem, 3.6vw, 1.125rem); /* Reduced ~17% from clamp(1.05rem, 4.4vw, 1.35rem) */
     line-height: 1.35;
   }
 }
